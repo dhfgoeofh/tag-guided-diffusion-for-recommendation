@@ -1,25 +1,16 @@
 import math
 import copy
 from pathlib import Path
-from random import random
 from functools import partial
-from collections import namedtuple
-from multiprocessing import cpu_count
 import numpy as np
 
 import torch
 from torch import nn, einsum
 import torch.nn.functional as F
-from torch.cuda.amp import autocast
 
-from einops import rearrange, reduce, repeat
-from einops.layers.torch import Rearrange
+from einops import rearrange, repeat
 
 from tqdm.auto import tqdm
-
-# constants
-
-ModelPrediction =  namedtuple('ModelPrediction', ['pred_noise', 'pred_x_start'])
 
 # helpers functions
 def exists(x):
@@ -144,6 +135,7 @@ class RandomOrLearnedSinusoidalPosEmb(nn.Module):
         fouriered = torch.cat((freqs.sin(), freqs.cos()), dim = -1)
         fouriered = torch.cat((x, fouriered), dim = -1)
         return fouriered
+    
 
 # building block modules
 
@@ -245,82 +237,198 @@ class Attention(nn.Module):
 
         out = rearrange(out, 'b h (x y) d -> b (h d) x y', x = h, y = w)
         return self.to_out(out)
-
-
     
 
-# gaussian diffusion trainer class
+# model
+class Unet(nn.Module):
+    def __init__(
+        self,
+        dim,
+        num_classes,
+        cond_drop_prob = 0.5,
+        init_dim = None,
+        out_dim = None,
+        dim_mults=(1, 2, 4, 8),
+        channels = 3,
+        learned_variance = False,
+        learned_sinusoidal_cond = False,
+        random_fourier_features = False,
+        learned_sinusoidal_dim = 16,
+        attn_dim_head = 32,
+        attn_heads = 4
+    ):
+        super().__init__()
 
-def extract(a, t, x_shape):
-    b, *_ = t.shape
-    out = a.gather(-1, t)
-    return out.reshape(b, *((1,) * (len(x_shape) - 1)))
+        # classifier free guidance stuff
 
-def linear_beta_schedule(timesteps):
-    scale = 1000 / timesteps
-    beta_start = scale * 0.0001
-    beta_end = scale * 0.02
-    return torch.linspace(beta_start, beta_end, timesteps, dtype = torch.float64)
+        self.cond_drop_prob = cond_drop_prob
 
-def cosine_beta_schedule(timesteps, s = 0.008):
-    """
-    cosine schedule
-    as proposed in https://openreview.net/forum?id=-NEXDKk8gZ
-    """
-    steps = timesteps + 1
-    x = torch.linspace(0, timesteps, steps, dtype = torch.float64)
-    alphas_cumprod = torch.cos(((x / timesteps) + s) / (1 + s) * math.pi * 0.5) ** 2
-    alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
-    betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
-    return torch.clip(betas, 0, 0.999)
+        # determine dimensions
 
+        self.channels = channels
+        input_channels = channels
 
+        init_dim = default(init_dim, dim)
+        self.init_conv = nn.Conv2d(input_channels, init_dim, 7, padding = 3)
 
-# example
+        dims = [init_dim, *map(lambda m: dim * m, dim_mults)]
+        in_out = list(zip(dims[:-1], dims[1:]))
 
-if __name__ == '__main__':
-    num_classes = 10
-    
-    # model = Unet(
-    #     dim = 64,
-    #     dim_mults = (1, 2, 4, 8),
-    #     num_classes = num_classes,
-    #     cond_drop_prob = 0.5
-    # )
+        # time embeddings
 
-    model = MLP(
-        in_dims=128,
-        out_dims=128,
-        time_emb_dim=10,
-        tag_emb_dim=400
-    )
-    
-    diffusion = GaussianDiffusion(
-        model,
-        x_size = 128,
-        timesteps = 1000
-    ).cuda()
+        time_dim = dim * 4
 
-    training_images = torch.randn(8, 3, 128, 128).cuda() # images are normalized from 0 to 1
-    image_classes = torch.randint(0, num_classes, (8,)).cuda()    # say 10 classes
+        self.random_or_learned_sinusoidal_cond = learned_sinusoidal_cond or random_fourier_features
 
-    loss = diffusion(training_images, classes = image_classes)
-    loss.backward()
+        if self.random_or_learned_sinusoidal_cond:
+            sinu_pos_emb = RandomOrLearnedSinusoidalPosEmb(learned_sinusoidal_dim, random_fourier_features)
+            fourier_dim = learned_sinusoidal_dim + 1
+        else:
+            sinu_pos_emb = SinusoidalPosEmb(dim)
+            fourier_dim = dim
 
-    # do above for many steps
+        self.time_mlp = nn.Sequential(
+            sinu_pos_emb,
+            nn.Linear(fourier_dim, time_dim),
+            nn.GELU(),
+            nn.Linear(time_dim, time_dim)
+        )
 
-    sampled_images = diffusion.sample(
-        classes = image_classes,
-        cond_scale = 6.                # condition scaling, anything greater than 1 strengthens the classifier free guidance. reportedly 3-8 is good empirically
-    )
+        # class embeddings
 
-    sampled_images.shape # (8, 3, 128, 128)
+        self.classes_emb = nn.Embedding(num_classes, dim)
+        self.null_classes_emb = nn.Parameter(torch.randn(dim))
 
-    # interpolation
+        classes_dim = dim * 4
 
-    interpolate_out = diffusion.interpolate(
-        training_images[:1],
-        training_images[:1],
-        image_classes[:1]
-    )
+        self.classes_mlp = nn.Sequential(
+            nn.Linear(dim, classes_dim),
+            nn.GELU(),
+            nn.Linear(classes_dim, classes_dim)
+        )
 
+        # layers
+
+        self.downs = nn.ModuleList([])
+        self.ups = nn.ModuleList([])
+        num_resolutions = len(in_out)
+
+        for ind, (dim_in, dim_out) in enumerate(in_out):
+            is_last = ind >= (num_resolutions - 1)
+
+            self.downs.append(nn.ModuleList([
+                ResnetBlock(dim_in, dim_in, time_emb_dim = time_dim, classes_emb_dim = classes_dim),
+                ResnetBlock(dim_in, dim_in, time_emb_dim = time_dim, classes_emb_dim = classes_dim),
+                Residual(PreNorm(dim_in, LinearAttention(dim_in))),
+                Downsample(dim_in, dim_out) if not is_last else nn.Conv2d(dim_in, dim_out, 3, padding = 1)
+            ]))
+
+        mid_dim = dims[-1]
+        self.mid_block1 = ResnetBlock(mid_dim, mid_dim, time_emb_dim = time_dim, classes_emb_dim = classes_dim)
+        self.mid_attn = Residual(PreNorm(mid_dim, Attention(mid_dim, dim_head = attn_dim_head, heads = attn_heads)))
+        self.mid_block2 = ResnetBlock(mid_dim, mid_dim, time_emb_dim = time_dim, classes_emb_dim = classes_dim)
+
+        for ind, (dim_in, dim_out) in enumerate(reversed(in_out)):
+            is_last = ind == (len(in_out) - 1)
+
+            self.ups.append(nn.ModuleList([
+                ResnetBlock(dim_out + dim_in, dim_out, time_emb_dim = time_dim, classes_emb_dim = classes_dim),
+                ResnetBlock(dim_out + dim_in, dim_out, time_emb_dim = time_dim, classes_emb_dim = classes_dim),
+                Residual(PreNorm(dim_out, LinearAttention(dim_out))),
+                Upsample(dim_out, dim_in) if not is_last else  nn.Conv2d(dim_out, dim_in, 3, padding = 1)
+            ]))
+
+        default_out_dim = channels * (1 if not learned_variance else 2)
+        self.out_dim = default(out_dim, default_out_dim)
+
+        self.final_res_block = ResnetBlock(init_dim * 2, init_dim, time_emb_dim = time_dim, classes_emb_dim = classes_dim)
+        self.final_conv = nn.Conv2d(init_dim, self.out_dim, 1)
+
+    def forward_with_cond_scale(
+        self,
+        *args,
+        cond_scale = 1.,
+        rescaled_phi = 0.,
+        **kwargs
+    ):
+        logits = self.forward(*args, cond_drop_prob = 0., **kwargs)
+
+        if cond_scale == 1:
+            return logits
+
+        null_logits = self.forward(*args, cond_drop_prob = 1., **kwargs)
+        scaled_logits = null_logits + (logits - null_logits) * cond_scale
+
+        if rescaled_phi == 0.:
+            return scaled_logits, null_logits
+
+        std_fn = partial(torch.std, dim = tuple(range(1, scaled_logits.ndim)), keepdim = True)
+        rescaled_logits = scaled_logits * (std_fn(logits) / std_fn(scaled_logits))
+        interpolated_rescaled_logits = rescaled_logits * rescaled_phi + scaled_logits * (1. - rescaled_phi)
+
+        return interpolated_rescaled_logits, null_logits
+
+    def forward(
+        self,
+        x,
+        time,
+        classes,
+        cond_drop_prob = None
+    ):
+        batch, device = x.shape[0], x.device
+
+        cond_drop_prob = default(cond_drop_prob, self.cond_drop_prob)
+
+        # derive condition, with condition dropout for classifier free guidance        
+
+        classes_emb = self.classes_emb(classes)
+
+        if cond_drop_prob > 0:
+            keep_mask = prob_mask_like((batch,), 1 - cond_drop_prob, device = device)
+            null_classes_emb = repeat(self.null_classes_emb, 'd -> b d', b = batch)
+
+            classes_emb = torch.where(
+                rearrange(keep_mask, 'b -> b 1'),
+                classes_emb,
+                null_classes_emb
+            )
+
+        c = self.classes_mlp(classes_emb)
+
+        # unet
+
+        x = self.init_conv(x)
+        r = x.clone()
+
+        t = self.time_mlp(time)
+
+        h = []
+
+        for block1, block2, attn, downsample in self.downs:
+            x = block1(x, t, c)
+            h.append(x)
+
+            x = block2(x, t, c)
+            x = attn(x)
+            h.append(x)
+
+            x = downsample(x)
+
+        x = self.mid_block1(x, t, c)
+        x = self.mid_attn(x)
+        x = self.mid_block2(x, t, c)
+
+        for block1, block2, attn, upsample in self.ups:
+            x = torch.cat((x, h.pop()), dim = 1)
+            x = block1(x, t, c)
+
+            x = torch.cat((x, h.pop()), dim = 1)
+            x = block2(x, t, c)
+            x = attn(x)
+
+            x = upsample(x)
+
+        x = torch.cat((x, r), dim = 1)
+
+        x = self.final_res_block(x, t, c)
+        return self.final_conv(x)
