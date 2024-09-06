@@ -61,8 +61,8 @@ parser.add_argument('--optimizer', type=str, default='AdamW', help='optimizer fo
 # params for diffusion
 parser.add_argument('--objective', type=str, default='pred_noise', help='objective type: pred_noise, pred_x0, pred_v')
 parser.add_argument('--mean_type', type=str, default='x0', help='MeanType for diffusion: x0, eps')
-parser.add_argument('--timesteps', type=int, default=1000, help='diffusion steps')
-parser.add_argument('--noise_schedule', type=str, default='linear', help='the schedule for noise generating')
+parser.add_argument('--steps', type=int, default=5, help='diffusion steps')
+parser.add_argument('--noise_schedule', type=str, default='cosine', help='the schedule for noise generating')
 parser.add_argument('--noise_scale', type=float, default=0.1, help='noise scale for noise generating')
 parser.add_argument('--noise_min', type=float, default=0.0001)
 parser.add_argument('--noise_max', type=float, default=0.02)
@@ -115,105 +115,106 @@ if __name__ == '__main__':
     valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
-
-    ### model ###
-    # num_classes = 10
-    model = MLP(
-                in_dims=eval(args.in_dims),
-                out_dims=eval(args.in_dims),
-                time_emb_dim=args.time_emb_dim,
-                tag_emb_dim=args.tag_emb_dim,
-                act_func=args.mlp_act_func,
-                num_layers=args.num_layers
-                ).cuda()
-    
-    diffusion = GaussianDiffusion(
-                                  model,
-                                  x_size = args.in_dims,
-                                  timesteps = args.timesteps,
-                                  objective=args.objective,
-                                  beta_schedule=args.noise_schedule
-                                  ).cuda()
-
-
-    if args.optimizer == 'Adagrad':
-        optimizer = optim.Adagrad(
-            model.parameters(), lr=args.lr, initial_accumulator_value=1e-8, weight_decay=args.wd)
-    elif args.optimizer == 'Adam':
-        optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wd)
-    elif args.optimizer == 'AdamW':
-        optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
-    elif args.optimizer == 'SGD':
-        optimizer = optim.SGD(model.parameters(), lr=args.lr, weight_decay=args.wd)
-    elif args.optimizer == 'Momentum':
-        optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.95, weight_decay=args.wd)
-    print("models ready.")
-
-    ## Initialize best validation loss tracker
-    best_valid_loss = float('inf')
-    best_epoch = -1
-
-    ## training ##
-    for epoch in range(args.epochs):
-        model.train()
-        total_train_loss = 0
+    for layer_num in [1, 2, 3, 4]:
+        ### model ###
+        # num_classes = 10
+        model = MLP(
+                    in_dims=eval(args.in_dims),
+                    out_dims=eval(args.in_dims),
+                    time_emb_dim=args.time_emb_dim,
+                    tag_emb_dim=args.tag_emb_dim,
+                    act_func=args.mlp_act_func,
+                    num_layers=layer_num
+                    ).cuda()
+        print("Noise Scheduler: ",args.noise_schedule)
         
-        for batch in train_loader:
-            item_batch, tag_batch = batch
-            item_batch, tag_batch = item_batch.cuda(), tag_batch.cuda()
-                    
-            # Forward pass through the diffusion process
-            # print("Item Batch Shape:",item_batch.shape)
-            loss = diffusion(item_batch, classes=tag_batch)
+        diffusion = GaussianDiffusion(
+                                    model,
+                                    x_size = 128,
+                                    timesteps = 1000,
+                                    objective=args.objective,
+                                    beta_schedule=args.noise_schedule
+                                    ).cuda()
+
+
+        if args.optimizer == 'Adagrad':
+            optimizer = optim.Adagrad(
+                model.parameters(), lr=args.lr, initial_accumulator_value=1e-8, weight_decay=args.wd)
+        elif args.optimizer == 'Adam':
+            optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wd)
+        elif args.optimizer == 'AdamW':
+            optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
+        elif args.optimizer == 'SGD':
+            optimizer = optim.SGD(model.parameters(), lr=args.lr, weight_decay=args.wd)
+        elif args.optimizer == 'Momentum':
+            optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.95, weight_decay=args.wd)
+        print("models ready.")
+
+        ## Initialize best validation loss tracker
+        best_valid_loss = float('inf')
+        best_epoch = -1
+
+        ## training ##
+        for epoch in range(args.epochs):
+            model.train()
+            total_train_loss = 0
             
-            # Backpropagation
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-            total_train_loss += loss.item()
-        
-        avg_train_loss = total_train_loss / len(train_loader)
-
-        # Validation
-        model.eval()
-        total_valid_loss = 0
-        
-        with torch.no_grad():
-            for batch in valid_loader:
+            for batch in train_loader:
                 item_batch, tag_batch = batch
                 item_batch, tag_batch = item_batch.cuda(), tag_batch.cuda()
+                        
+                # Forward pass through the diffusion process
+                # print("Item Batch Shape:",item_batch.shape)
+                loss = diffusion(item_batch, classes=tag_batch)
                 
+                # Backpropagation
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+                total_train_loss += loss.item()
+            
+            avg_train_loss = total_train_loss / len(train_loader)
+
+            # Validation
+            model.eval()
+            total_valid_loss = 0
+            
+            with torch.no_grad():
+                for batch in valid_loader:
+                    item_batch, tag_batch = batch
+                    item_batch, tag_batch = item_batch.cuda(), tag_batch.cuda()
+                    
+                    # Forward pass through the diffusion process
+                    loss = diffusion(item_batch, classes=tag_batch)
+                    total_valid_loss += loss.item()
+            
+            avg_valid_loss = total_valid_loss / len(valid_loader)
+
+            # Check if current validation loss is the best so far
+            if avg_valid_loss < best_valid_loss:
+                best_valid_loss = avg_valid_loss
+                best_epoch = epoch + 1  # Store best epoch (1-indexed)
+
+            if epoch % 100 == 0:
+                print(f"Epoch {epoch+1}/{args.epochs}, Training Loss: {avg_train_loss}, Validation Loss: {avg_valid_loss}")
+        
+        ## After training, evaluate on test set ##
+        model.eval()  # Set the model to evaluation mode
+        total_test_loss = 0
+
+        with torch.no_grad():  # Disable gradient calculation for evaluation
+            for batch in test_loader:
+                item_batch, tag_batch = batch
+                item_batch, tag_batch = item_batch.cuda(), tag_batch.cuda()
+
                 # Forward pass through the diffusion process
                 loss = diffusion(item_batch, classes=tag_batch)
-                total_valid_loss += loss.item()
-        
-        avg_valid_loss = total_valid_loss / len(valid_loader)
+                total_test_loss += loss.item()
 
-        # Check if current validation loss is the best so far
-        if avg_valid_loss < best_valid_loss:
-            best_valid_loss = avg_valid_loss
-            best_epoch = epoch + 1  # Store best epoch (1-indexed)
+        avg_test_loss = total_test_loss / len(test_loader)
+        print(f"Test Loss: {avg_test_loss}")
 
-        if epoch % 100 == 0:
-            print(f"Epoch {epoch+1}/{args.epochs}, Training Loss: {avg_train_loss}, Validation Loss: {avg_valid_loss}")
-    
-    ## After training, evaluate on test set ##
-    model.eval()  # Set the model to evaluation mode
-    total_test_loss = 0
-
-    with torch.no_grad():  # Disable gradient calculation for evaluation
-        for batch in test_loader:
-            item_batch, tag_batch = batch
-            item_batch, tag_batch = item_batch.cuda(), tag_batch.cuda()
-
-            # Forward pass through the diffusion process
-            loss = diffusion(item_batch, classes=tag_batch)
-            total_test_loss += loss.item()
-
-    avg_test_loss = total_test_loss / len(test_loader)
-    print(f"Test Loss: {avg_test_loss}")
-
-    # Print out the best epoch for reference
-    print(f"Best Epoch: {best_epoch}, Best Validation Loss: {best_valid_loss}")
-    print("End time: ", time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(time.time())))
+        # Print out the best epoch for reference
+        print(f"Best Epoch: {best_epoch}, Best Validation Loss: {best_valid_loss}")
+        print("End time: ", time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(time.time())))
