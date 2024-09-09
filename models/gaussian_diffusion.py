@@ -343,7 +343,6 @@ class GaussianDiffusion(nn.Module):
         # noise sample
 
         x = self.q_sample(x_start = x_start, t = t, noise = noise)
-
         # predict and take gradient step
 
         model_out = self.model(x, t, classes)
@@ -365,9 +364,10 @@ class GaussianDiffusion(nn.Module):
         return loss.mean()
 
     def forward(self, img, *args, **kwargs):
-        b, h, device, img_size, = *img.shape, img.device, self.x_size
+        b, h, device, img_size, = *img.shape, img.device, self.x_size[0]
         assert h == img_size, f'height and width of image must be {img_size}'
         t = torch.randint(0, self.num_timesteps, (b,), device=device).long()
 
-        img = normalize_to_neg_one_to_one(img)
+        ## case: image
+        # img = normalize_to_neg_one_to_one(img)        # normalize image from (0 ~ 1) to (-1 ~ 1)
         return self.p_losses(img, t, *args, **kwargs)

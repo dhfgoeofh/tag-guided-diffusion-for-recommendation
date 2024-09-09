@@ -129,7 +129,7 @@ if __name__ == '__main__':
     
     diffusion = GaussianDiffusion(
                                   model,
-                                  x_size = args.in_dims,
+                                  x_size = eval(args.in_dims),
                                   timesteps = args.timesteps,
                                   objective=args.objective,
                                   beta_schedule=args.noise_schedule
