@@ -64,6 +64,7 @@ class MLP(nn.Module):
         
         super().__init__()
 
+        self.model_type = MLP
         self.in_dims = in_dims
         self.out_dims = out_dims
         assert out_dims[0] == in_dims[-1], "In and out dimensions must equal to each other."
@@ -75,7 +76,6 @@ class MLP(nn.Module):
         self.learned_sinusoidal_dim = learned_sinusoidal_dim
         self.dropout = dropout
         self.num_layers = num_layers
-        print(f"Number of MLP layers: {self.num_layers}")
 
         self.random_or_learned_sinusoidal_cond = learned_sinusoidal_cond or random_fourier_features
 
