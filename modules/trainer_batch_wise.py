@@ -13,6 +13,7 @@ class Trainer:
         self.best_valid_loss = float('inf')
         self.best_epoch = -1
         self.num_t_samples = num_t_samples
+        self.model_path = args.model_path
         
         # optimizer
         if args.optimizer == 'Adagrad':
@@ -64,7 +65,7 @@ class Trainer:
             # if epoch % 100 == 0:
             #     print(f"Epoch {epoch+1}/{self.epochs}, Training Loss: {avg_train_loss}, Validation Loss: {avg_valid_loss}")
         print(f"Epoch {epoch+1}/{self.epochs}, Training Loss: {avg_train_loss}, Validation Loss: {avg_valid_loss}")
-        
+
     def validate(self, valid_loader):
         self.model.eval()
         total_valid_loss = 0
@@ -114,3 +115,11 @@ class Trainer:
         Helper function to calculate loss between generated samples and ground truth
         """
         return nn.MSELoss()(generated_samples, ground_truth)
+    
+    def save(self):
+        data = {
+            'epochs': self.epochs,
+            'model': self.model.get_state_dict(self.model)
+        }
+
+        torch.save(data, str(self.model_path / f'model-{self.epochs}_epoch.pt'))

@@ -38,13 +38,14 @@ def parse_args():
     # Data paths
     parser.add_argument('--emb_path', type=str, default='./data/ML25M/BPR_cv/BPR_ivec_0.npy', help='load emb path')
     parser.add_argument('--tag_emb_path', type=str, default='./data/ML25M/mv-tag-emb.npy', help='load tag emb path')
+    parser.add_argument('--model_path', type=str, default='./saved_models', help='model path to save')
 
     # Model and training parameters
-    parser.add_argument('--num_t_samples', type=int, default=5, help='number of time(t) samples for training') ###
+    parser.add_argument('--num_t_samples', type=int, default=1, help='number of time(t) samples for training') ###
     parser.add_argument('--lr', type=float, default=0.0001, help='learning rate for MLP')
     parser.add_argument('--wd', type=float, default=0.0, help='weight decay for MLP')
     parser.add_argument('--batch_size', type=int, default=400)
-    parser.add_argument('--epochs', type=int, default=1000, help='upper epoch limit')
+    parser.add_argument('--epochs', type=int, default=500, help='upper epoch limit')
     parser.add_argument('--cuda', action='store_true', help='use CUDA')
     parser.add_argument('--gpu', type=str, default='0', help='gpu card ID')
     parser.add_argument('--save_path', type=str, default='./saved_models/', help='save model path')
@@ -59,8 +60,8 @@ def parse_args():
 
     # Diffusion parameters
     parser.add_argument('--objective', type=str, default='pred_noise', help='objective type: pred_noise, pred_x0, pred_v')
-    parser.add_argument('--timesteps', type=int, default=250, help='diffusion steps') ###
-    parser.add_argument('--noise_schedule', type=str, default='linear', help='the schedule for noise generating')
+    parser.add_argument('--timesteps', type=int, default=1000, help='diffusion steps') ###
+    parser.add_argument('--noise_schedule', type=str, default='sigmoid', help='the schedule for noise generating')
     
     return parser.parse_args()
 

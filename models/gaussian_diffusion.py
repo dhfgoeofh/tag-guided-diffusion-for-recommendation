@@ -40,6 +40,21 @@ def cosine_beta_schedule(timesteps, s = 0.008):
     betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
     return torch.clip(betas, 0, 0.999)
 
+def sigmoid_beta_schedule(timesteps, start = -3, end = 3, tau = 1, clamp_min = 1e-5):
+    """
+    sigmoid schedule
+    proposed in https://arxiv.org/abs/2212.11972 - Figure 8
+    better for images > 64x64, when used during training
+    """
+    steps = timesteps + 1
+    t = torch.linspace(0, timesteps, steps, dtype = torch.float64) / timesteps
+    v_start = torch.tensor(start / tau).sigmoid()
+    v_end = torch.tensor(end / tau).sigmoid()
+    alphas_cumprod = (-((t * (end - start) + start) / tau).sigmoid() + v_end) / (v_end - v_start)
+    alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
+    betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
+    return torch.clip(betas, 0, 0.999)
+
 # helpers functions
 def exists(x):
     return x is not None
@@ -74,7 +89,8 @@ class GaussianDiffusion(nn.Module):
         offset_noise_strength = 0.,
         min_snr_loss_weight = False,
         min_snr_gamma = 5,
-        use_cfg_plus_plus = False # https://arxiv.org/pdf/2406.08070
+        use_cfg_plus_plus = False, # https://arxiv.org/pdf/2406.08070
+        num_step = 5
     ):
         super().__init__()
         if model.channels != None:
@@ -94,6 +110,8 @@ class GaussianDiffusion(nn.Module):
             betas = linear_beta_schedule(timesteps)
         elif beta_schedule == 'cosine':
             betas = cosine_beta_schedule(timesteps)
+        elif beta_schedule == 'sigmoid':
+            betas = sigmoid_beta_schedule(timesteps)
         else:
             raise ValueError(f'unknown beta schedule {beta_schedule}')
 
@@ -103,6 +121,7 @@ class GaussianDiffusion(nn.Module):
 
         timesteps, = betas.shape
         self.num_timesteps = int(timesteps)
+        self.num_step = num_step
 
         # use cfg++ when ddim sampling
 
@@ -212,11 +231,11 @@ class GaussianDiffusion(nn.Module):
             pred_noise = model_output 
 
             x_start = self.predict_start_from_noise(x, t, pred_noise)
-            x_start = maybe_clip(x_start)
+            # x_start = maybe_clip(x_start)
 
         elif self.objective == 'pred_x0':
             x_start = model_output
-            x_start = maybe_clip(x_start)
+            # x_start = maybe_clip(x_start)
             x_start_for_pred_noise = x_start
 
             pred_noise = self.predict_noise_from_start(x, t, x_start_for_pred_noise)
@@ -224,7 +243,7 @@ class GaussianDiffusion(nn.Module):
         elif self.objective == 'pred_v':
             v = model_output
             x_start = self.predict_start_from_v(x, t, v)
-            x_start = maybe_clip(x_start)
+            # x_start = maybe_clip(x_start)
 
             x_start_for_pred_noise = x_start
 
@@ -232,7 +251,7 @@ class GaussianDiffusion(nn.Module):
 
         return ModelPrediction(pred_noise, x_start)
 
-    def p_mean_variance(self, x, t, classes, clip_denoised = True):
+    def p_mean_variance(self, x, t, classes, clip_denoised = False):
         preds = self.model_predictions(x, t, classes)
         x_start = preds.pred_x_start
 
@@ -340,14 +359,14 @@ class GaussianDiffusion(nn.Module):
 
     def p_losses(self, x_start, t, *, classes, noise = None):
         b, h = x_start.shape
-        noise = default(noise, lambda: torch.randn_like(x_start))
-
+        
         # noise sample
+        noise = default(noise, lambda: torch.randn_like(x_start))   # if noise is exist, noise = noise / else, noise = torch.randn_like(x_start)
 
-        x = self.q_sample(x_start = x_start, t = t, noise = noise)
-        # predict and take gradient step
+        # x_t = sqrt_alphas_cumprob * x0 + sqrt_1_minus_alphas_cumprod * noise
+        x_t = self.q_sample(x_start = x_start, t = t, noise = noise)
 
-        model_out = self.model(x, t, classes)
+        model_out = self.model(x_t, t, classes)
 
         if self.objective == 'pred_noise':
             target = noise
@@ -365,6 +384,7 @@ class GaussianDiffusion(nn.Module):
         loss = loss * extract(self.loss_weight, t, loss.shape)
         return loss.mean()
 
+
     def forward(self, img, *args, **kwargs):
         b, h, device, img_size, = *img.shape, img.device, self.x_size
         assert h == img_size, f'height and width of image must be {img_size}'
@@ -373,3 +393,20 @@ class GaussianDiffusion(nn.Module):
         ## case: image
         # img = normalize_to_neg_one_to_one(img)        # normalize image from (0 ~ 1) to (-1 ~ 1)
         return self.p_losses(img, t, *args, **kwargs)
+    
+
+    def forward_gradually(self, img, *args, **kwargs):
+        b, h, device, img_size, = *img.shape, img.device, self.x_size
+        num_step = self.num_step
+        losses = []
+        assert h == img_size, f'height and width of image must be {img_size}'
+        t_max = torch.randint(0, self.num_timesteps, (b,), device=device).long()
+        
+        steps = reversed([int(i * (t_max / num_step)) for i in range(1, num_step + 1)])
+        for t in steps:
+            ## case: image
+            # img = normalize_to_neg_one_to_one(img)        # normalize image from (0 ~ 1) to (-1 ~ 1)
+            loss = self.p_losses(img, t, *args, **kwargs)
+            losses.append(loss)
+
+        return losses.sum()
