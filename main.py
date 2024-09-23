@@ -39,14 +39,13 @@ def parse_args():
     parser.add_argument('--emb_path', type=str, default='./data/ML25M/BPR_cv/BPR_ivec_0.npy', help='load item emb path')
     parser.add_argument('--user_path', type=str, default='./data/ML25M/BPR_cv/BPR_uvec_0.npy', help='load user emb path')
     parser.add_argument('--tag_emb_path', type=str, default='./data/ML25M/mv-tag-emb.npy', help='load tag emb path')
-    parser.add_argument('--model_path', type=str, default='./saved_models', help='model path to save')
 
     # Model and training parameters
     parser.add_argument('--num_t_samples', type=int, default=1, help='number of time(t) samples for training') ###
     parser.add_argument('--lr', type=float, default=0.0001, help='learning rate for MLP')
     parser.add_argument('--wd', type=float, default=0.0, help='weight decay for MLP')
     parser.add_argument('--batch_size', type=int, default=400)
-    parser.add_argument('--epochs', type=int, default=500, help='upper epoch limit')
+    parser.add_argument('--epochs', type=int, default=1000, help='upper epoch limit')
     parser.add_argument('--cuda', action='store_true', help='use CUDA')
     parser.add_argument('--gpu', type=str, default='0', help='gpu card ID')
     parser.add_argument('--save_path', type=str, default='./saved_models/', help='save model path')
@@ -61,40 +60,10 @@ def parse_args():
 
     # Diffusion parameters
     parser.add_argument('--objective', type=str, default='pred_noise', help='objective type: pred_noise, pred_x0, pred_v')
-    parser.add_argument('--timesteps', type=int, default=1000, help='diffusion steps') ###
-    parser.add_argument('--noise_schedule', type=str, default='sigmoid', help='the schedule for noise generating')
+    parser.add_argument('--timesteps', type=int, default=1500, help='diffusion steps') ###
+    parser.add_argument('--noise_schedule', type=str, default='linear', help='the schedule for noise generating')
     
     return parser.parse_args()
-
-
-def load_model(args, device):
-    # Load the MLP and Gaussian Diffusion model
-    model = MLP(
-        in_dims=[args.in_dims],
-        out_dims=[args.in_dims],
-        time_emb_dim=args.time_emb_dim,
-        tag_emb_dim=args.tag_emb_dim,
-        act_func=args.mlp_act_func,
-        num_layers=args.num_layers
-    ).to(device)
-
-    diffusion = GaussianDiffusion(
-        model=model,
-        x_size=args.in_dims,
-        timesteps=args.timesteps,
-        objective='pred_noise',  # Assuming same as in training
-        beta_schedule='linear'   # Assuming same as in training
-    ).to(device)
-
-    # Load saved model weights
-    model_checkpoint = os.path.join(args.model_path, 'diffusion_model.pth')
-    if os.path.exists(model_checkpoint):
-        model.load_state_dict(torch.load(model_checkpoint))
-        print("Model loaded successfully from", model_checkpoint)
-    else:
-        raise FileNotFoundError(f"No model found at {model_checkpoint}")
-
-    return model, diffusion
 
 
 if __name__ == '__main__':
@@ -106,7 +75,7 @@ if __name__ == '__main__':
     device = torch.device("cuda:0" if args.cuda else "cpu")
 
     # Load data and prepare DataLoader
-    data_loader_builder = DataLoaderBuilder(args.emb_path, args.user_path, args.tag_emb_path, args.batch_size)
+    data_loader_builder = DataLoaderBuilder(args.emb_path, args.tag_emb_path, args.batch_size)
     train_items, valid_items, test_items, train_tags, valid_tags, test_tags = data_loader_builder.load_data()
     train_loader, valid_loader, test_loader = data_loader_builder.prepare_dataloaders(
                                                                                       train_items, valid_items, test_items, 

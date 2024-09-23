@@ -1,10 +1,11 @@
 import numpy as np
+import pandas as pd
 import bottleneck as bn
 import torch
 import math
 
 
-def recommend(user_embeddings, item_embeddings):
+def recommend(user_embeddings, item_embeddings, max_k):
     """
     Recommends the top k items for each user in a batch based on user and item embeddings.
     
@@ -22,13 +23,13 @@ def recommend(user_embeddings, item_embeddings):
     scores = np.dot(user_embeddings, item_embeddings.T)
 
     # Get the indices of the top k items for each user
-    indices = np.argsort(scores, axis=1)[:, ::-1][:, :]
+    item_indices = np.argsort(scores, axis=1)[:, ::-1][:, :max_k].tolist()
 
     # Get the top k scores for each user
-    batch_indices = np.arange(user_embeddings.shape[0])[:, None]  # Shape: (batch_size, 1)
-    top_k_scores = scores[batch_indices, indices]
+    user_indices = np.arange(user_embeddings.shape[0])[:, None]  # Shape: (batch_size, 1)
+    top_k_scores = scores[user_indices, item_indices]
 
-    return indices, top_k_scores
+    return item_indices, top_k_scores
 
 
 def computeTopNAccuracy(GroundTruth, predictedIndices, topN):
@@ -100,7 +101,7 @@ def print_results(valid_result, test_result=None, loss=None):
         
 
 def get_ground_truth(path):
-    gt_data = np.load(path)
+    gt_data = pd.read_csv(path, sep='\t')
     
     mid_group = gt_data.groupby('uid')['mid'].apply(list).reset_index()
     gt_list = mid_group.values.tolist()

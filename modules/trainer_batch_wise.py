@@ -15,7 +15,7 @@ class Trainer:
         self.best_valid_loss = float('inf')
         self.best_epoch = -1
         self.num_t_samples = num_t_samples
-        self.model_path = args.model_path
+        self.save_path = args.save_path
         
         # optimizer
         if args.optimizer == 'Adagrad':
@@ -141,15 +141,15 @@ class Trainer:
     def save(self):
         data = {
             'epochs': self.epochs,
-            'model': self.model.get_state_dict(self.model)
+            'state_dict': self.model.state_dict()
         }
 
-        torch.save(data, str(self.model_path / f'model-{self.epochs}_epoch.pt'))
+        torch.save(data, f'{self.save_path}model-{self.epochs}_epoch.pt')
 
     def save_best_model(self):
         data = {
             'epochs': self.epochs,
-            'model': self.model.get_state_dict(self.model)
+            'state_dict': self.model.state_dict()
         }
 
-        torch.save(data, str(self.model_path / f'best_model.pt'))
+        torch.save(data, f'{self.save_path}best_model.pt')

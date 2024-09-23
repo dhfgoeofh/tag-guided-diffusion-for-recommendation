@@ -37,14 +37,13 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     # Evaluation Parameters
-    parser.add_argument('--topN', type=int, default=10, help='top N items for evaluation.')
+    parser.add_argument('--topN', type=str, default='[5, 10, 20, 30]', help='top N items for evaluation.')
     parser.add_argument('--gt_path', type=str, default='./data/ML25M/BPR_cv/cold_movies_rating_all_0.tsv', help='preference items of each user')
 
     # Data paths
     parser.add_argument('--emb_path', type=str, default='./data/ML25M/BPR_cv/BPR_ivec_0.npy', help='load emb path')
     parser.add_argument('--user_path', type=str, default='./data/ML25M/BPR_cv/BPR_uvec_0.npy', help='load user emb path')
     parser.add_argument('--tag_emb_path', type=str, default='./data/ML25M/mv-tag-emb.npy', help='load tag emb path')
-    parser.add_argument('--model_path', type=str, default='./saved_models', help='model path to save')
     
     # Model and training parameters
     parser.add_argument('--num_t_samples', type=int, default=1, help='number of time(t) samples for training') ###
@@ -74,9 +73,9 @@ def parse_args():
 
 def load_model(model, diffusion, args, device):
     # Load saved model weights
-    model_checkpoint = os.path.join(args.model_path, 'diffusion_model.pth')
+    model_checkpoint = os.path.join(args.save_path, 'best_model.pt')
     if os.path.exists(model_checkpoint):
-        model.load_state_dict(torch.load(model_checkpoint))
+        model.load_state_dict(torch.load(model_checkpoint)['state_dict'])
         print("Model loaded successfully from", model_checkpoint)
     else:
         raise FileNotFoundError(f"No model found at {model_checkpoint}")
@@ -95,7 +94,7 @@ if __name__ == '__main__':
     # Load data and prepare DataLoader
     data_loader_builder = DataLoaderBuilder(args.emb_path, args.tag_emb_path, args.batch_size)
     items, tags = data_loader_builder.load_vt_data()
-    dataloader = data_loader_builder.prepare_dataloaders(items, tags)
+    dataloader = data_loader_builder.prepare_dataloaders_vt(items, tags)
 
     ### model ###
     model = MLP(
@@ -138,11 +137,12 @@ if __name__ == '__main__':
     users = np.load(args.user_path)
     items = trainer.sample_item_emb(dataloader)
     
+    max_k = eval(args.topN)[-1]
     # predicted indices
-    pred_indices, pred_scores = evaluate_utils.recommend(users, items)
+    pred_indices, pred_scores = evaluate_utils.recommend(users, items, max_k)
     
     gt_indices = evaluate_utils.get_ground_truth(args.gt_path)
     # precision, recall, NDCG, MRR
-    pred_result = evaluate_utils.computeTopNAccuracy(gt_indices, pred_indices, args.topN)
+    pred_result = evaluate_utils.computeTopNAccuracy(gt_indices, pred_indices, eval(args.topN))
     evaluate_utils.evaluprint_results(pred_result)
     
