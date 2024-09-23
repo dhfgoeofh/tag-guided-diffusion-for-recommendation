@@ -37,7 +37,9 @@ def parse_args():
 
     # Data paths
     parser.add_argument('--emb_path', type=str, default='./data/ML25M/BPR_cv/BPR_ivec_0.npy', help='load emb path')
+    parser.add_argument('--user_path', type=str, default='./data/ML25M/BPR_cv/BPR_uvec_0.npy', help='load user emb path')
     parser.add_argument('--tag_emb_path', type=str, default='./data/ML25M/mv-tag-emb.npy', help='load tag emb path')
+    parser.add_argument('--model_path', type=str, default='./saved_models', help='model path to save')
 
     # Model and training parameters
     parser.add_argument('--num_t_samples', type=str, default='[1,3,5]', help='number of time(t) samples for training') ###
@@ -64,6 +66,35 @@ def parse_args():
     
     return parser.parse_args()
 
+def load_model(args, device):
+    # Load the MLP and Gaussian Diffusion model
+    model = MLP(
+        in_dims=[args.in_dims],
+        out_dims=[args.in_dims],
+        time_emb_dim=args.time_emb_dim,
+        tag_emb_dim=args.tag_emb_dim,
+        act_func=args.mlp_act_func,
+        num_layers=args.num_layers
+    ).to(device)
+
+    diffusion = GaussianDiffusion(
+        model=model,
+        x_size=args.in_dims,
+        timesteps=args.timesteps,
+        objective='pred_noise',  # Assuming same as in training
+        beta_schedule='linear'   # Assuming same as in training
+    ).to(device)
+
+    # Load saved model weights
+    model_checkpoint = os.path.join(args.model_path, 'diffusion_model.pth')
+    if os.path.exists(model_checkpoint):
+        model.load_state_dict(torch.load(model_checkpoint))
+        print("Model loaded successfully from", model_checkpoint)
+    else:
+        raise FileNotFoundError(f"No model found at {model_checkpoint}")
+
+    return model, diffusion
+
 
 if __name__ == '__main__':
     set_random_seed(seed=1)
@@ -76,7 +107,7 @@ if __name__ == '__main__':
     
     for bs in eval(args.batch_size):
         # Load data and prepare DataLoader
-        data_loader_builder = DataLoaderBuilder(args.emb_path, args.tag_emb_path, bs)
+        data_loader_builder = DataLoaderBuilder(args.emb_path, args.user_path, args.tag_emb_path, bs)
         train_items, valid_items, test_items, train_tags, valid_tags, test_tags = data_loader_builder.load_data()
         train_loader, valid_loader, test_loader = data_loader_builder.prepare_dataloaders(
                                                                                         train_items, valid_items, test_items, 

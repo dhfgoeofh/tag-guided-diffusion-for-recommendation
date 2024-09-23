@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.optim as optim
 import time
 
+import numpy as np
+
 # 배치 내에서 샘플링 수만큼 한번에 학습 (일반화 향상)
 class Trainer:
     def __init__(self, model, diffusion, device, num_t_samples, args):
@@ -57,10 +59,12 @@ class Trainer:
 
             if epoch % 10 == 0:
                 avg_valid_loss = self.validate(valid_loader)
+                self.save()
 
                 if avg_valid_loss < self.best_valid_loss:
                     self.best_valid_loss = avg_valid_loss
                     self.best_epoch = epoch + 1
+                    self.save_best_model()
 
             # if epoch % 100 == 0:
             #     print(f"Epoch {epoch+1}/{self.epochs}, Training Loss: {avg_train_loss}, Validation Loss: {avg_valid_loss}")
@@ -110,6 +114,25 @@ class Trainer:
         
         print("End time: ", time.strftime('%Y-%m-%d %H:%M:%S', self.end_time), 'runtime:', time.strftime('%H:%M:%S', time.gmtime(runtime)))
 
+
+    def sample_item_emb(self, item_loader):
+        self.model.eval()
+        samples = []
+
+        with torch.no_grad():
+            for user_batch, item_batch, tag_batch in item_loader:
+                item_batch, tag_batch = item_batch.cuda(), tag_batch.cuda()
+                
+                # Sample generation using diffusion's sample method
+                generated_sample = self.diffusion.sample(classes=tag_batch)
+                samples.append(generated_sample.cpu().numpy())
+
+        user_batch = user_batch.cpu().numpy()
+        samples = np.concatenate(samples, axis=0)
+        
+        return user_batch, samples
+
+
     def calculate_loss(self, generated_samples, ground_truth):
         """
         Helper function to calculate loss between generated samples and ground truth
@@ -123,3 +146,11 @@ class Trainer:
         }
 
         torch.save(data, str(self.model_path / f'model-{self.epochs}_epoch.pt'))
+
+    def save_best_model(self):
+        data = {
+            'epochs': self.epochs,
+            'model': self.model.get_state_dict(self.model)
+        }
+
+        torch.save(data, str(self.model_path / f'best_model.pt'))

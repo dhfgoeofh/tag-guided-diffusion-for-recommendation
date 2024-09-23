@@ -24,16 +24,27 @@ def recommend_top_k_items(user_embedding, item_embeddings, k=10):
     
     return top_k_indices, top_k_scores
 
+
 # Example usage
 if __name__ == "__main__":
     # Random example data
-    user_embedding = np.array([0.2, 0.3, 0.5])  # Example user embedding
-    item_embeddings = np.array([[0.1, 0.4, 0.6], 
-                                [0.2, 0.1, 0.9], 
-                                [0.9, 0.7, 0.3], 
-                                [0.4, 0.6, 0.8]])  # Example item embeddings
+    user_emb_path = 'data\ML25M\BPR_cv\BPR_uvec_0.npy'
+    item_emb_path = 'data\ML25M\BPR_cv\BPR_ivec_0.npy'
 
-    k = 2  # Number of items to recommend
+    user_embedding = np.load(user_emb_path)
+    item_embeddings = np.load(item_emb_path)
+
+    val_test_idx = np.all(item_embeddings == 0, axis=1)
+    if np.any(val_test_idx):
+        print(np.where(val_test_idx == True))
+        print(f"There are {np.sum(val_test_idx)} valid&test items with zero embedding.")
+    else:
+        print("There are no valid&test embedding.")
+
+    val_user_emb = user_embedding[val_test_idx]
+    val_item_emb = item_embeddings[val_test_idx]
+
+    k = 5  # Number of items to recommend
     top_k_indices, top_k_scores = recommend_top_k_items(user_embedding, item_embeddings, k)
 
     print("Top K Recommended Item Indices:", top_k_indices)

@@ -4,8 +4,9 @@ from sklearn.model_selection import train_test_split
 import numpy as np
 
 class DataLoaderBuilder:
-    def __init__(self, emb_path, tag_emb_path, batch_size):
+    def __init__(self, emb_path, user_path, tag_emb_path, batch_size):
         self.emb_path = emb_path
+        self.user_path = user_path
         self.tag_emb_path = tag_emb_path
         self.batch_size = batch_size
 
@@ -26,6 +27,24 @@ class DataLoaderBuilder:
             temp_items, temp_tags, test_size=0.5, random_state=42)
 
         return train_items, valid_items, test_items, train_tags, valid_tags, test_tags
+    
+    def load_vt_data(self, is_all = True):
+        user_embeddings = np.load(self.user_path)
+        item_embeddings = np.load(self.emb_path).astype(np.float32)
+        tag_embeddings = np.load(self.tag_emb_path).astype(np.float32)
+
+        if is_all:
+            zero_rows = np.all(item_embeddings == 0, axis=1)
+            user_embeddings = user_embeddings[zero_rows]
+            item_embeddings = item_embeddings[zero_rows]
+            tag_embeddings = tag_embeddings[zero_rows]
+        else:
+            zero_rows = np.all(item_embeddings == 0, axis=1)
+            user_embeddings = user_embeddings[zero_rows]
+            item_embeddings = item_embeddings[zero_rows]
+            tag_embeddings = tag_embeddings[zero_rows]
+
+        return user_embeddings, item_embeddings, tag_embeddings
 
     def prepare_dataloaders(self, train_items, valid_items, test_items, train_tags, valid_tags, test_tags):
         train_dataset = TensorDataset(torch.tensor(train_items, dtype=torch.float32), torch.tensor(train_tags, dtype=torch.float32))
@@ -37,3 +56,9 @@ class DataLoaderBuilder:
         test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False)
 
         return train_loader, valid_loader, test_loader
+    
+    def prepare_dataloaders_vt(self, users, items, tags):
+        dataset = TensorDataset(torch.tensor(users, dtype=torch.int16), torch.tensor(items, dtype=torch.float32), torch.tensor(tags, dtype=torch.float32))
+        dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=False)
+
+        return dataloader
