@@ -3,6 +3,7 @@ from ast import parse
 import os
 import time
 import numpy as np
+import pandas as pd
 import copy
 
 import torch
@@ -133,15 +134,22 @@ if __name__ == '__main__':
 
     # Train and validate
     trainer = Trainer(model, diffusion, device, args.num_t_samples, args)
-
+    
+    gt_indices = evaluate_utils.get_ground_truth(args.gt_path)
     users = np.load(args.user_path)
+    if len(gt_indices) - len(users) > 0:
+        ratings = pd.read_csv('data\ML25M\BPR_cv\cold_movies_rating_all_0.tsv', sep='\t')
+        uids = set(ratings['uid'].unique())
+
+        null_list = [idx for idx in range(len(users)) if idx not in uids]
+        # remove null users
+        users = users[~null_list]
     items = trainer.sample_item_emb(dataloader)
     
     max_k = eval(args.topN)[-1]
     # predicted indices
     pred_indices, pred_scores = evaluate_utils.recommend(users, items, max_k)
     
-    gt_indices = evaluate_utils.get_ground_truth(args.gt_path)
     # precision, recall, NDCG, MRR
     pred_result = evaluate_utils.computeTopNAccuracy(gt_indices, pred_indices, eval(args.topN))
     evaluate_utils.evaluprint_results(pred_result)
