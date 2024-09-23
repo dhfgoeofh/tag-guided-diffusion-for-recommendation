@@ -120,17 +120,16 @@ class Trainer:
         samples = []
 
         with torch.no_grad():
-            for user_batch, item_batch, tag_batch in item_loader:
+            for item_batch, tag_batch in item_loader:
                 item_batch, tag_batch = item_batch.cuda(), tag_batch.cuda()
                 
                 # Sample generation using diffusion's sample method
                 generated_sample = self.diffusion.sample(classes=tag_batch)
                 samples.append(generated_sample.cpu().numpy())
 
-        user_batch = user_batch.cpu().numpy()
         samples = np.concatenate(samples, axis=0)
         
-        return user_batch, samples
+        return samples
 
 
     def calculate_loss(self, generated_samples, ground_truth):
