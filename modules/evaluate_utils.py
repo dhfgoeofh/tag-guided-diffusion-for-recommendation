@@ -74,10 +74,10 @@ def computeTopNAccuracy(GroundTruth, predictedIndices, topN):
                 sumForNdcg += ndcg
                 sumForMRR += userMRR
         
-        precision.append(round(sumForPrecision / len(predictedIndices), 4))
-        recall.append(round(sumForRecall / len(predictedIndices), 4))
-        NDCG.append(round(sumForNdcg / len(predictedIndices), 4))
-        MRR.append(round(sumForMRR / len(predictedIndices), 4))
+        precision.append(round(sumForPrecision / len(predictedIndices), 6))
+        recall.append(round(sumForRecall / len(predictedIndices), 6))
+        NDCG.append(round(sumForNdcg / len(predictedIndices), 6))
+        MRR.append(round(sumForMRR / len(predictedIndices), 6))
         
     return precision, recall, NDCG, MRR
 
@@ -87,7 +87,7 @@ def print_results(valid_result, test_result=None, loss=None):
     if loss is not None:
         print("[Train]: loss: {:.4f}".format(loss))
     if valid_result is not None: 
-        print("[Valid]: Precision: {} Recall: {} NDCG: {} MRR: {}".format(
+        print("[Valid]: \n Precision: {} \n Recall: {} \n NDCG: {} \n MRR: {}".format(
                             '-'.join([str(x) for x in valid_result[0]]), 
                             '-'.join([str(x) for x in valid_result[1]]), 
                             '-'.join([str(x) for x in valid_result[2]]), 
@@ -103,7 +103,7 @@ def print_results(valid_result, test_result=None, loss=None):
 def get_ground_truth(path):
     gt_data = pd.read_csv(path, sep='\t')
     
-    mid_group = gt_data.groupby('uid')['mid'].apply(list).reset_index()
+    mid_group = gt_data.groupby('uid')['mid'].apply(list).reset_index(drop=True)
     gt_list = mid_group.values.tolist()
 
     return gt_list

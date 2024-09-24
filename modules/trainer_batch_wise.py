@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import time
-
+import os
 import numpy as np
 
 # 배치 내에서 샘플링 수만큼 한번에 학습 (일반화 향상)
@@ -59,16 +59,17 @@ class Trainer:
 
             if epoch % 10 == 0:
                 avg_valid_loss = self.validate(valid_loader)
-                self.save()
+                
 
                 if avg_valid_loss < self.best_valid_loss:
                     self.best_valid_loss = avg_valid_loss
                     self.best_epoch = epoch + 1
                     self.save_best_model()
 
-            # if epoch % 100 == 0:
-            #     print(f"Epoch {epoch+1}/{self.epochs}, Training Loss: {avg_train_loss}, Validation Loss: {avg_valid_loss}")
-        print(f"Epoch {epoch+1}/{self.epochs}, Training Loss: {avg_train_loss}, Validation Loss: {avg_valid_loss}")
+            if epoch % 100 == 0:
+                self.save(epoch)
+                print(f"Epoch {epoch+1}/{self.epochs}, Training Loss: {avg_train_loss}, Validation Loss: {avg_valid_loss}")
+        #print(f"Epoch {epoch+1}/{self.epochs}, Training Loss: {avg_train_loss}, Validation Loss: {avg_valid_loss}")
 
     def validate(self, valid_loader):
         self.model.eval()
@@ -120,16 +121,14 @@ class Trainer:
         samples = []
 
         with torch.no_grad():
-            for item_batch, tag_batch in item_loader:
-                item_batch, tag_batch = item_batch.cuda(), tag_batch.cuda()
+            for _, tag_batch in item_loader:
+                tag_batch = tag_batch.cuda()
                 
                 # Sample generation using diffusion's sample method
                 generated_sample = self.diffusion.sample(classes=tag_batch)
                 samples.append(generated_sample.cpu().numpy())
 
-        samples = np.concatenate(samples, axis=0)
-        
-        return samples
+        return np.concatenate(samples, axis=0)
 
 
     def calculate_loss(self, generated_samples, ground_truth):
@@ -138,18 +137,22 @@ class Trainer:
         """
         return nn.MSELoss()(generated_samples, ground_truth)
     
-    def save(self):
+    def save(self, epoch):
+        os.makedirs(self.save_path, exist_ok=True)
+
         data = {
             'epochs': self.epochs,
             'state_dict': self.model.state_dict()
         }
 
-        torch.save(data, f'{self.save_path}model-{self.epochs}_epoch.pt')
+        torch.save(data, os.path.join(self.save_path, f'model-{self.epochs}-epoch.pt'))
 
     def save_best_model(self):
+        os.makedirs(self.save_path, exist_ok=True)
+
         data = {
             'epochs': self.epochs,
             'state_dict': self.model.state_dict()
         }
 
-        torch.save(data, f'{self.save_path}best_model.pt')
+        torch.save(data, os.path.join(self.save_path, 'best_model.pt'))

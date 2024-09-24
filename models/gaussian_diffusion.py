@@ -223,7 +223,7 @@ class GaussianDiffusion(nn.Module):
         posterior_log_variance_clipped = extract(self.posterior_log_variance_clipped, t, x_t.shape)
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
 
-    def model_predictions(self, x, t, classes, clip_x_start = False):
+    def model_predictions(self, x, t, classes, clip_x_start = True):
         model_output = self.model(x, t, classes)
         maybe_clip = partial(torch.clamp, min = -1., max = 1.) if clip_x_start else identity
 
@@ -251,7 +251,7 @@ class GaussianDiffusion(nn.Module):
 
         return ModelPrediction(pred_noise, x_start)
 
-    def p_mean_variance(self, x, t, classes, clip_denoised = False):
+    def p_mean_variance(self, x, t, classes, clip_denoised = True):
         preds = self.model_predictions(x, t, classes)
         x_start = preds.pred_x_start
 

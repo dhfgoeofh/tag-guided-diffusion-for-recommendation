@@ -42,7 +42,7 @@ def parse_args():
     parser.add_argument('--model_path', type=str, default='./saved_models', help='model path to save')
 
     # Model and training parameters
-    parser.add_argument('--num_t_samples', type=str, default='[1,3,5]', help='number of time(t) samples for training') ###
+    parser.add_argument('--num_t_samples', type=str, default='[1,3]', help='number of time(t) samples for training') ###
     parser.add_argument('--lr', type=float, default=0.0001, help='learning rate for MLP')
     parser.add_argument('--wd', type=float, default=0.0, help='weight decay for MLP')
     parser.add_argument('--batch_size', type=str, default='[400]')    ###
@@ -61,7 +61,7 @@ def parse_args():
 
     # Diffusion parameters
     parser.add_argument('--objective', type=str, default='pred_noise', help='objective type: pred_noise, pred_x0, pred_v')
-    parser.add_argument('--timesteps', type=str, default='[500, 1000, 1500, 2000]', help='diffusion steps') ###
+    parser.add_argument('--timesteps', type=str, default='[1000, 1500, 2000]', help='diffusion steps') ###
     parser.add_argument('--noise_schedule', type=str, default='linear', help='the schedule for noise generating')
     
     return parser.parse_args()
@@ -107,7 +107,7 @@ if __name__ == '__main__':
     
     for bs in eval(args.batch_size):
         # Load data and prepare DataLoader
-        data_loader_builder = DataLoaderBuilder(args.emb_path, args.user_path, args.tag_emb_path, bs)
+        data_loader_builder = DataLoaderBuilder(args.emb_path, args.tag_emb_path, bs)
         train_items, valid_items, test_items, train_tags, valid_tags, test_tags = data_loader_builder.load_data()
         train_loader, valid_loader, test_loader = data_loader_builder.prepare_dataloaders(
                                                                                         train_items, valid_items, test_items, 

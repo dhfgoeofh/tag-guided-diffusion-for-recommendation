@@ -27,20 +27,20 @@ class DataLoaderBuilder:
 
         return train_items, valid_items, test_items, train_tags, valid_tags, test_tags
     
-    def load_vt_data(self, is_all = True):
+    def load_vt_data(self, is_sample = True):
         item_embeddings = np.load(self.emb_path).astype(np.float32)
         tag_embeddings = np.load(self.tag_emb_path).astype(np.float32)
 
-        if is_all:
-            zero_rows = np.all(item_embeddings == 0, axis=1)
+        zero_rows = np.all(item_embeddings == 0, axis=1)
+        if is_sample:
             item_embeddings = item_embeddings[zero_rows]
             tag_embeddings = tag_embeddings[zero_rows]
         else:
             zero_rows = np.all(item_embeddings == 0, axis=1)
-            item_embeddings = item_embeddings[zero_rows]
-            tag_embeddings = tag_embeddings[zero_rows]
+            item_embeddings = item_embeddings[~zero_rows]
+            tag_embeddings = tag_embeddings[~zero_rows]
 
-        return item_embeddings, tag_embeddings
+        return item_embeddings, tag_embeddings, zero_rows
 
     def prepare_dataloaders(self, train_items, valid_items, test_items, train_tags, valid_tags, test_tags):
         train_dataset = TensorDataset(torch.tensor(train_items, dtype=torch.float32), torch.tensor(train_tags, dtype=torch.float32))
