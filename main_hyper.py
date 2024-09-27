@@ -42,7 +42,7 @@ def parse_args():
     parser.add_argument('--model_path', type=str, default='./saved_models', help='model path to save')
 
     # Model and training parameters
-    parser.add_argument('--num_t_samples', type=str, default='[1,3]', help='number of time(t) samples for training') ###
+    parser.add_argument('--num_t_samples', type=str, default='[1]', help='number of time(t) samples for training') ###
     parser.add_argument('--lr', type=float, default=0.0001, help='learning rate for MLP')
     parser.add_argument('--wd', type=float, default=0.0, help='weight decay for MLP')
     parser.add_argument('--batch_size', type=str, default='[400]')    ###

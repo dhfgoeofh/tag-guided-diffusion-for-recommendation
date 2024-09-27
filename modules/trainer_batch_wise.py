@@ -16,6 +16,7 @@ class Trainer:
         self.best_epoch = -1
         self.num_t_samples = num_t_samples
         self.save_path = args.save_path
+        self.timesteps = args.timesteps
         
         # optimizer
         if args.optimizer == 'Adagrad':
@@ -67,7 +68,7 @@ class Trainer:
                     self.save_best_model()
 
             if epoch % 100 == 0:
-                self.save(epoch)
+                # self.save(epoch)
                 print(f"Epoch {epoch+1}/{self.epochs}, Training Loss: {avg_train_loss}, Validation Loss: {avg_valid_loss}")
         #print(f"Epoch {epoch+1}/{self.epochs}, Training Loss: {avg_train_loss}, Validation Loss: {avg_valid_loss}")
 
@@ -141,11 +142,11 @@ class Trainer:
         os.makedirs(self.save_path, exist_ok=True)
 
         data = {
-            'epochs': self.epochs,
+            'epochs': epoch,
             'state_dict': self.model.state_dict()
         }
 
-        torch.save(data, os.path.join(self.save_path, f'model-{self.epochs}-epoch.pt'))
+        torch.save(data, os.path.join(self.save_path, f'model-{epoch}epoch-{self.timesteps}timesteps.pt'))
 
     def save_best_model(self):
         os.makedirs(self.save_path, exist_ok=True)
@@ -155,4 +156,4 @@ class Trainer:
             'state_dict': self.model.state_dict()
         }
 
-        torch.save(data, os.path.join(self.save_path, 'best_model.pt'))
+        torch.save(data, os.path.join(self.save_path, f'best_{self.diffusion.objective}_{self.timesteps}timesteps.pt'))

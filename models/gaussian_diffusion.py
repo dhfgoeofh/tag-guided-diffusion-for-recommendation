@@ -22,8 +22,10 @@ def extract(a, t, x_shape):
     out = a.gather(-1, t)
     return out.reshape(b, *((1,) * (len(x_shape) - 1)))
 
-def linear_beta_schedule(timesteps):
-    scale = 1000 / timesteps
+def linear_beta_schedule(timesteps, scale=None):
+    if scale == None:
+        scale = 1000 / timesteps
+
     beta_start = scale * 0.0001
     beta_end = scale * 0.02
     return torch.linspace(beta_start, beta_end, timesteps, dtype = torch.float64)
@@ -90,7 +92,8 @@ class GaussianDiffusion(nn.Module):
         min_snr_loss_weight = False,
         min_snr_gamma = 5,
         use_cfg_plus_plus = False, # https://arxiv.org/pdf/2406.08070
-        num_step = 5
+        num_step = 5,
+        noise_scale = None
     ):
         super().__init__()
         if model.channels != None:
@@ -107,7 +110,7 @@ class GaussianDiffusion(nn.Module):
         assert objective in {'pred_noise', 'pred_x0', 'pred_v'}, 'objective must be either pred_noise (predict noise) or pred_x0 (predict image start) or pred_v (predict v [v-parameterization as defined in appendix D of progressive distillation paper, used in imagen-video successfully])'
 
         if beta_schedule == 'linear':
-            betas = linear_beta_schedule(timesteps)
+            betas = linear_beta_schedule(timesteps, noise_scale)
         elif beta_schedule == 'cosine':
             betas = cosine_beta_schedule(timesteps)
         elif beta_schedule == 'sigmoid':
@@ -231,11 +234,11 @@ class GaussianDiffusion(nn.Module):
             pred_noise = model_output 
 
             x_start = self.predict_start_from_noise(x, t, pred_noise)
-            # x_start = maybe_clip(x_start)
+            x_start = maybe_clip(x_start)
 
         elif self.objective == 'pred_x0':
             x_start = model_output
-            # x_start = maybe_clip(x_start)
+            x_start = maybe_clip(x_start)
             x_start_for_pred_noise = x_start
 
             pred_noise = self.predict_noise_from_start(x, t, x_start_for_pred_noise)
@@ -243,7 +246,7 @@ class GaussianDiffusion(nn.Module):
         elif self.objective == 'pred_v':
             v = model_output
             x_start = self.predict_start_from_v(x, t, v)
-            # x_start = maybe_clip(x_start)
+            x_start = maybe_clip(x_start)
 
             x_start_for_pred_noise = x_start
 
@@ -268,6 +271,8 @@ class GaussianDiffusion(nn.Module):
         model_mean, _, model_log_variance, x_start = self.p_mean_variance(x = x, t = batched_times, classes = classes, clip_denoised = clip_denoised)
         noise = torch.randn_like(x) if t > 0 else 0. # no noise if t == 0
         pred_img = model_mean + (0.5 * model_log_variance).exp() * noise
+        # print(f't:{t}, data_norm:{torch.norm(pred_img[0])}')
+        
         return pred_img, x_start
 
     @torch.no_grad()

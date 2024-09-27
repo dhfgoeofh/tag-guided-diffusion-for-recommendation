@@ -18,7 +18,7 @@ class DataLoaderBuilder:
         item_embeddings_cleaned = item_embeddings[~zero_rows]
         tag_embeddings_cleaned = tag_embeddings[~zero_rows]
 
-        print(f'Cleaned item data: {item_embeddings_cleaned.shape}, Cleaned tag data: {tag_embeddings_cleaned.shape}')
+        print(f'Cleaned item data: {item_embeddings_cleaned.shape}, zeros items: {np.sum(zero_rows)}')
 
         train_items, temp_items, train_tags, temp_tags = train_test_split(
             item_embeddings_cleaned, tag_embeddings_cleaned, test_size=0.2, random_state=42)
