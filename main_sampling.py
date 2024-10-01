@@ -141,6 +141,8 @@ if __name__ == '__main__':
     # items (orgin, sample, orgin + sample)
     items_orgin = np.load(args.emb_path).astype(np.float32)
     zero_rows = np.all(items_orgin == 0, axis=1)
+    vali_rows = pd.read_csv('./data/ML25M/BPR_cv/cold_movies_vali_0.tsv', sep='\t')['mid'].tolist()
+    test_rows = pd.read_csv('./data/ML25M/BPR_cv/cold_movies_test_0.tsv', sep='\t')['mid'].tolist()
     
     # items_bpr : train, val, test of BPR model(non-zero)
     items_bpr, _, zero_idxs = data_loader_builder.load_vt_data(is_sample=False)
@@ -190,13 +192,12 @@ if __name__ == '__main__':
 
     # 상호작용을 안한 유저, 즉 gt가 없는 유저를 제거
     if abs(len(users) - len(gt_indices)) > 0:
-        # ratings = pd.read_csv('data\ML25M\BPR_cv\BPR_test_0.tsv', sep='\t')
-        # uids = set(ratings['uid'].unique())
+        ratings = pd.read_csv('data\ML25M\BPR_cv\BPR_test_0.tsv', sep='\t')
+        uids = set(ratings['uid'].unique())
 
-        # null_mask = ~np.isin(np.arange(len(users)), list(uids))
-        # # remove null users
-        # users = np.delete(users, np.where(null_mask)[0], axis=0)
-        print('num_user != num_gt_user')
+        null_mask = ~np.isin(np.arange(len(users)), list(uids))
+        # remove null users
+        users = np.delete(users, np.where(null_mask)[0], axis=0)
         
     # predicted indices
     pred_indices, pred_scores = evaluate_utils.recommend(users, items_bpr, max_k)
@@ -268,14 +269,14 @@ if __name__ == '__main__':
 
 
     print("#" * 16)
-    print('Non-zero + Zeros')
+    print('Test(BPR) + Cold-Item')
     print("#" * 16)
     
     users = np.load(args.user_path)
-    gt_indices = evaluate_utils.get_ground_truth('data\ML25M\BPR_cv\BPR_all_cold_all_0.tsv')
+    gt_indices = evaluate_utils.get_ground_truth('data\ML25M\BPR_cv\BPR_test_cold_all_0.tsv')
     # 상호작용을 안한 유저, 즉 gt가 없는 유저를 제거
     if abs(len(users) - len(gt_indices)) > 0:
-        ratings = pd.read_csv('data\ML25M\BPR_cv\BPR_all_cold_all_0.tsv', sep='\t')
+        ratings = pd.read_csv('data\ML25M\BPR_cv\BPR_test_cold_all_0.tsv', sep='\t')
         uids = set(ratings['uid'].unique())
 
         null_mask = ~np.isin(np.arange(len(users)), list(uids))
@@ -294,10 +295,10 @@ if __name__ == '__main__':
     print('Non-zero + Sample')
     print("#" * 16)
     users = np.load(args.user_path)
-    gt_indices = evaluate_utils.get_ground_truth('data\ML25M\BPR_cv\BPR_all_cold_all_0.tsv')
+    gt_indices = evaluate_utils.get_ground_truth('data\ML25M\BPR_cv\BPR_test_cold_all_0.tsv')
     # 상호작용을 안한 유저, 즉 gt가 없는 유저를 제거
     if abs(len(users) - len(gt_indices)) > 0:
-        ratings = pd.read_csv('data\ML25M\BPR_cv\BPR_all_cold_all_0.tsv', sep='\t')
+        ratings = pd.read_csv('data\ML25M\BPR_cv\BPR_test_cold_all_0.tsv', sep='\t')
         uids = set(ratings['uid'].unique())
 
         null_mask = ~np.isin(np.arange(len(users)), list(uids))
