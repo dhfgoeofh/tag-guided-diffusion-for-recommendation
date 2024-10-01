@@ -65,6 +65,7 @@ def parse_args():
     parser.add_argument('--optimizer', type=str, default='AdamW', help='optimizer for MLP: Adam, AdamW, SGD, etc.')
 
     # Diffusion parameters
+    parser.add_argument('--noise_scale', type=float, default=0.005, help='noise scale')
     parser.add_argument('--objective', type=str, default='pred_x0', help='objective type: pred_noise, pred_x0, pred_v')
     parser.add_argument('--timesteps', type=int, default=1500, help='diffusion steps') ###
     parser.add_argument('--noise_schedule', type=str, default='linear', help='the schedule for noise generating')
