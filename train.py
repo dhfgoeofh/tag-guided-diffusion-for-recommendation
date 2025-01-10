@@ -51,7 +51,7 @@ def parse_args():
     parser.add_argument('--save_path', type=str, default='./saved_models/', help='save model path')
 
     # MLP parameters
-    parser.add_argument('--dropout', type=float, default=0.5, help='dropout rate of MLP layer')
+    parser.add_argument('--dropout', type=float, default=0.0, help='dropout rate of MLP layer')
     parser.add_argument('--num_layers', type=int, default=5, help='number of MLP layers')
     parser.add_argument('--in_dims', type=int, default=128, help='the dims for item embedding')
     parser.add_argument('--tag_emb_dim', type=int, default=400, help='the dims for tag embedding')
