@@ -18,6 +18,7 @@ class Trainer:
         self.save_path = args.save_path
         self.act_func = args.mlp_act_func
         self.num_layers = args.num_layers
+        self.noise_schedule = args.noise_schedule
         if timesteps == None:
             self.timesteps = args.timesteps
         else:
@@ -162,4 +163,4 @@ class Trainer:
             'state_dict': self.model.state_dict()
         }
 
-        torch.save(data, os.path.join(self.save_path, f'best_{self.diffusion.objective}_{self.act_func}_{self.num_layers}_{self.timesteps}timesteps.pt'))
+        torch.save(data, os.path.join(self.save_path, f'best_{self.diffusion.objective}_{self.noise_schedule}_{self.act_func}_{self.num_layers}_{self.timesteps}timesteps.pt'))

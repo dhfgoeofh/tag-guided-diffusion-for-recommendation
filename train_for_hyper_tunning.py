@@ -19,7 +19,7 @@ from models.gaussian_diffusion import GaussianDiffusion
 from models.MLP import MLP
 from modules.dataloader import DataLoaderBuilder
 # from modules.trainer_batch_wise import Trainer
-from modules.trainer_batch_wise import Trainer
+from modules.trainer import Trainer
 
 from tqdm import tqdm
 

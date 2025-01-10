@@ -20,7 +20,7 @@ from models.gaussian_diffusion import GaussianDiffusion
 from models.MLP import MLP
 from modules.dataloader import DataLoaderBuilder
 # from modules.trainer_batch_wise import Trainer
-from modules.trainer_batch_wise import Trainer
+from modules.trainer import Trainer
 from modules import evaluate_utils
 
 from tqdm import tqdm
@@ -69,14 +69,14 @@ def parse_args():
     parser.add_argument('--noise_scale', type=float, default=0.005, help='noise scale')
     parser.add_argument('--objective', type=str, default='pred_x0', help='objective type: pred_noise, pred_x0, pred_v')
     parser.add_argument('--timesteps', type=int, default=1000, help='diffusion steps') ###
-    parser.add_argument('--noise_schedule', type=str, default='linear', help='the schedule for noise generating')
+    parser.add_argument('--noise_schedule', type=str, default='cosine', help='the schedule for noise generating')
     
     return parser.parse_args()
 
 
 def load_model(model, diffusion, args, device):
     # Load saved model weights
-    model_checkpoint = os.path.join(args.save_path, f'best_{args.objective}_{args.mlp_act_func}_{args.num_layers}_{args.timesteps}timesteps.pt')
+    model_checkpoint = os.path.join(args.save_path, f'best_{args.objective}_{args.noise_schedule}_{args.mlp_act_func}_{args.num_layers}_{args.timesteps}timesteps.pt')
     if os.path.exists(model_checkpoint):
         model.load_state_dict(torch.load(model_checkpoint)['state_dict'])
         print("Model loaded successfully from", model_checkpoint)
