@@ -7,7 +7,7 @@ import numpy as np
 
 # 배치 내에서 샘플링 수만큼 한번에 학습 (일반화 향상)
 class Trainer:
-    def __init__(self, model, diffusion, device, num_t_samples, args):
+    def __init__(self, model, diffusion, device, num_t_samples, args, timesteps=None):
         self.model = model
         self.diffusion = diffusion
         self.device = device
@@ -16,7 +16,12 @@ class Trainer:
         self.best_epoch = -1
         self.num_t_samples = num_t_samples
         self.save_path = args.save_path
-        self.timesteps = args.timesteps
+        self.act_func = args.mlp_act_func
+        self.num_layers = args.num_layers
+        if timesteps == None:
+            self.timesteps = args.timesteps
+        else:
+            self.timesteps = timesteps
         
         # optimizer
         if args.optimizer == 'Adagrad':
@@ -71,6 +76,7 @@ class Trainer:
                 # self.save(epoch)
                 print(f"Epoch {epoch+1}/{self.epochs}, Training Loss: {avg_train_loss}, Validation Loss: {avg_valid_loss}")
         #print(f"Epoch {epoch+1}/{self.epochs}, Training Loss: {avg_train_loss}, Validation Loss: {avg_valid_loss}")
+        print('')
 
     def validate(self, valid_loader):
         self.model.eval()
@@ -156,4 +162,4 @@ class Trainer:
             'state_dict': self.model.state_dict()
         }
 
-        torch.save(data, os.path.join(self.save_path, f'best_{self.diffusion.objective}_{self.timesteps}timesteps.pt'))
+        torch.save(data, os.path.join(self.save_path, f'best_{self.diffusion.objective}_{self.act_func}_{self.num_layers}_{self.timesteps}timesteps.pt'))

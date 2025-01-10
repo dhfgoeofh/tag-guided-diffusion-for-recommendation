@@ -102,6 +102,7 @@ def print_results(valid_result, test_result=None, loss=None):
 
 def get_ground_truth(path):
     gt_data = pd.read_csv(path, sep='\t')
+    gt_data = gt_data.sort_values(['uid','rating','mid'], ascending=[True, False, True])
     
     mid_group = gt_data.groupby('uid')['mid'].apply(list).reset_index(drop=True)
     gt_list = mid_group.values.tolist()

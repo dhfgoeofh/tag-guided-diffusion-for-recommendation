@@ -121,7 +121,7 @@ if __name__ == '__main__':
 
 
                 # Train and validate
-                trainer = Trainer(model, diffusion, device, nt, args)
+                trainer = Trainer(model, diffusion, device, nt, args, timesteps=ts)
                 trainer.train(train_loader, valid_loader)
 
                 # Test

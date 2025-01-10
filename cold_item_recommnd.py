@@ -38,7 +38,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     # Evaluation Parameters
-    parser.add_argument('--topN', type=str, default='[5, 10, 30, 50]', help='top N items for evaluation.')
+    parser.add_argument('--topN', type=str, default='[5, 10, 25, 50, 75, 100]', help='top N items for evaluation.')
     parser.add_argument('--gt_path', type=str, default='./data/ML25M/BPR_cv/cold_movies_rating_all_0.tsv', help='preference items of each user')
 
     # Data paths
@@ -51,13 +51,14 @@ def parse_args():
     parser.add_argument('--lr', type=float, default=0.0001, help='learning rate for MLP')
     parser.add_argument('--wd', type=float, default=0.0, help='weight decay for MLP')
     parser.add_argument('--batch_size', type=int, default=400)
-    parser.add_argument('--epochs', type=int, default=1000, help='upper epoch limit')
+    parser.add_argument('--epochs', type=int, default=2000, help='upper epoch limit')
     parser.add_argument('--cuda', action='store_true', help='use CUDA')
     parser.add_argument('--gpu', type=str, default='0', help='gpu card ID')
     parser.add_argument('--save_path', type=str, default='./saved_models/', help='save model path')
 
     # MLP parameters
-    parser.add_argument('--num_layers', type=int, default=1, help='number of MLP layers')
+    parser.add_argument('--dropout', type=float, default=0.5, help='dropout rate of MLP layer')
+    parser.add_argument('--num_layers', type=int, default=5, help='number of MLP layers')
     parser.add_argument('--in_dims', type=int, default=128, help='the dims for item embedding')
     parser.add_argument('--tag_emb_dim', type=int, default=400, help='the dims for tag embedding')
     parser.add_argument('--time_emb_dim', type=int, default=10, help='timestep embedding size')
@@ -67,7 +68,7 @@ def parse_args():
     # Diffusion parameters
     parser.add_argument('--noise_scale', type=float, default=0.005, help='noise scale')
     parser.add_argument('--objective', type=str, default='pred_x0', help='objective type: pred_noise, pred_x0, pred_v')
-    parser.add_argument('--timesteps', type=int, default=1500, help='diffusion steps') ###
+    parser.add_argument('--timesteps', type=int, default=1000, help='diffusion steps') ###
     parser.add_argument('--noise_schedule', type=str, default='linear', help='the schedule for noise generating')
     
     return parser.parse_args()
@@ -75,7 +76,7 @@ def parse_args():
 
 def load_model(model, diffusion, args, device):
     # Load saved model weights
-    model_checkpoint = os.path.join(args.save_path, f'best_{args.objective}_{args.timesteps}timesteps.pt')
+    model_checkpoint = os.path.join(args.save_path, f'best_{args.objective}_{args.mlp_act_func}_{args.num_layers}_{args.timesteps}timesteps.pt')
     if os.path.exists(model_checkpoint):
         model.load_state_dict(torch.load(model_checkpoint)['state_dict'])
         print("Model loaded successfully from", model_checkpoint)
@@ -182,64 +183,64 @@ if __name__ == '__main__':
     
     max_k = eval(args.topN)[-1]
 
-    print("#" * 16)
-    print('Test(BPR)')
-    print("#" * 16)
-    users_idx = pd.read_csv('data\ML25M\BPR_cv\BPR_test_0.tsv', sep='\t')['uid'].unique()
-    users = np.load(args.user_path)[users_idx]
+    # print("#" * 16)
+    # print('Test(BPR)')
+    # print("#" * 16)
+    # users_idx = pd.read_csv('data\ML25M\BPR_cv\BPR_test_0.tsv', sep='\t')['uid'].unique()
+    # users = np.load(args.user_path)[users_idx]
     
-    gt_indices = evaluate_utils.get_ground_truth('data\ML25M\BPR_cv\BPR_test_0.tsv')
+    # gt_indices = evaluate_utils.get_ground_truth('data\ML25M\BPR_cv\BPR_test_0.tsv')
 
-    # 상호작용을 안한 유저, 즉 gt가 없는 유저를 제거
-    if abs(len(users) - len(gt_indices)) > 0:
-        ratings = pd.read_csv('data\ML25M\BPR_cv\BPR_test_0.tsv', sep='\t')
-        uids = set(ratings['uid'].unique())
+    # # 상호작용을 안한 유저, 즉 gt가 없는 유저를 제거
+    # if abs(len(users) - len(gt_indices)) > 0:
+    #     ratings = pd.read_csv('data\ML25M\BPR_cv\BPR_test_0.tsv', sep='\t')
+    #     uids = set(ratings['uid'].unique())
 
-        null_mask = ~np.isin(np.arange(len(users)), list(uids))
-        # remove null users
-        users = np.delete(users, np.where(null_mask)[0], axis=0)
+    #     null_mask = ~np.isin(np.arange(len(users)), list(uids))
+    #     # remove null users
+    #     users = np.delete(users, np.where(null_mask)[0], axis=0)
         
-    # predicted indices
-    pred_indices, pred_scores = evaluate_utils.recommend(users, items_bpr, max_k)
+    # # predicted indices
+    # pred_indices, pred_scores = evaluate_utils.recommend(users, items_bpr, max_k)
 
-    item_idxs = np.where(zero_rows == False)
-    pred_indices = item_idxs[0][pred_indices]
+    # item_idxs = np.where(zero_rows == False)
+    # pred_indices = item_idxs[0][pred_indices]
  
-    # precision, recall, NDCG, MRR
-    pred_result = evaluate_utils.computeTopNAccuracy(gt_indices, pred_indices, eval(args.topN))
-    evaluate_utils.print_results(pred_result)
+    # # precision, recall, NDCG, MRR
+    # pred_result = evaluate_utils.computeTopNAccuracy(gt_indices, pred_indices, eval(args.topN))
+    # evaluate_utils.print_results(pred_result)
 
 
-    print("#" * 16)
-    print('Random')
-    print("#" * 16)
-    users = np.load(args.user_path)
-    gt_indices = evaluate_utils.get_ground_truth(args.gt_path)
+    # print("#" * 16)
+    # print('Random')
+    # print("#" * 16)
+    # users = np.load(args.user_path)
+    # gt_indices = evaluate_utils.get_ground_truth(args.gt_path)
 
-    # 상호작용을 안한 유저, 즉 gt가 없는 유저를 제거
-    if abs(len(users) - len(gt_indices)) > 0:
-        ratings = pd.read_csv(args.gt_path, sep='\t')
-        uids = set(ratings['uid'].unique())
+    # # 상호작용을 안한 유저, 즉 gt가 없는 유저를 제거
+    # if abs(len(users) - len(gt_indices)) > 0:
+    #     ratings = pd.read_csv(args.gt_path, sep='\t')
+    #     uids = set(ratings['uid'].unique())
 
-        null_mask = ~np.isin(np.arange(len(users)), list(uids))
-        # remove null users
-        users = np.delete(users, np.where(null_mask)[0], axis=0)
+    #     null_mask = ~np.isin(np.arange(len(users)), list(uids))
+    #     # remove null users
+    #     users = np.delete(users, np.where(null_mask)[0], axis=0)
 
-    ## predicted indices
-    # pred_indices, pred_scores = evaluate_utils.recommend(users, items_sampled, max_k)
-    item_idxs = np.where(zero_rows == True)
+    # ## predicted indices
+    # # pred_indices, pred_scores = evaluate_utils.recommend(users, items_sampled, max_k)
+    # item_idxs = np.where(zero_rows == True)
 
-    ## Random prediction
-    matrix = np.zeros((len(users), max_k), dtype=int)
+    # ## Random prediction
+    # matrix = np.zeros((len(users), max_k), dtype=int)
     
-    for i in range((len(users))):
-        matrix[i] = np.random.choice(len(item_idxs[0]), size=max_k, replace=False)
+    # for i in range((len(users))):
+    #     matrix[i] = np.random.choice(len(item_idxs[0]), size=max_k, replace=False)
 
-    pred_indices = item_idxs[0][matrix]
+    # pred_indices = item_idxs[0][matrix]
 
-    # precision, recall, NDCG, MRR
-    pred_result = evaluate_utils.computeTopNAccuracy(gt_indices, pred_indices, eval(args.topN))
-    evaluate_utils.print_results(pred_result)
+    # # precision, recall, NDCG, MRR
+    # pred_result = evaluate_utils.computeTopNAccuracy(gt_indices, pred_indices, eval(args.topN))
+    # evaluate_utils.print_results(pred_result)
 
 
     print("#" * 16)
@@ -268,49 +269,49 @@ if __name__ == '__main__':
     evaluate_utils.print_results(pred_result)
 
 
-    print("#" * 16)
-    print('Test(BPR) + Cold-Item')
-    print("#" * 16)
+    # print("#" * 16)
+    # print('Test(BPR) + Cold-Item')
+    # print("#" * 16)
     
-    users = np.load(args.user_path)
-    gt_indices = evaluate_utils.get_ground_truth('data\ML25M\BPR_cv\BPR_test_cold_all_0.tsv')
-    # 상호작용을 안한 유저, 즉 gt가 없는 유저를 제거
-    if abs(len(users) - len(gt_indices)) > 0:
-        ratings = pd.read_csv('data\ML25M\BPR_cv\BPR_test_cold_all_0.tsv', sep='\t')
-        uids = set(ratings['uid'].unique())
+    # users = np.load(args.user_path)
+    # gt_indices = evaluate_utils.get_ground_truth('data\ML25M\BPR_cv\BPR_test_cold_all_0.tsv')
+    # # 상호작용을 안한 유저, 즉 gt가 없는 유저를 제거
+    # if abs(len(users) - len(gt_indices)) > 0:
+    #     ratings = pd.read_csv('data\ML25M\BPR_cv\BPR_test_cold_all_0.tsv', sep='\t')
+    #     uids = set(ratings['uid'].unique())
 
-        null_mask = ~np.isin(np.arange(len(users)), list(uids))
-        # remove null users
-        users = np.delete(users, np.where(null_mask)[0], axis=0)
+    #     null_mask = ~np.isin(np.arange(len(users)), list(uids))
+    #     # remove null users
+    #     users = np.delete(users, np.where(null_mask)[0], axis=0)
 
-    # predicted indices
-    pred_indices, pred_scores = evaluate_utils.recommend(users, items_orgin, max_k)
+    # # predicted indices
+    # pred_indices, pred_scores = evaluate_utils.recommend(users, items_orgin, max_k)
 
-    # precision, recall, NDCG, MRR
-    pred_result = evaluate_utils.computeTopNAccuracy(gt_indices, pred_indices, eval(args.topN))
-    evaluate_utils.print_results(pred_result)
+    # # precision, recall, NDCG, MRR
+    # pred_result = evaluate_utils.computeTopNAccuracy(gt_indices, pred_indices, eval(args.topN))
+    # evaluate_utils.print_results(pred_result)
     
 
-    print("#" * 16)
-    print('Non-zero + Sample')
-    print("#" * 16)
-    users = np.load(args.user_path)
-    gt_indices = evaluate_utils.get_ground_truth('data\ML25M\BPR_cv\BPR_test_cold_all_0.tsv')
-    # 상호작용을 안한 유저, 즉 gt가 없는 유저를 제거
-    if abs(len(users) - len(gt_indices)) > 0:
-        ratings = pd.read_csv('data\ML25M\BPR_cv\BPR_test_cold_all_0.tsv', sep='\t')
-        uids = set(ratings['uid'].unique())
+    # print("#" * 16)
+    # print('Test(BPR) + Cold-Item(Sampled)')
+    # print("#" * 16)
+    # users = np.load(args.user_path)
+    # gt_indices = evaluate_utils.get_ground_truth('data\ML25M\BPR_cv\BPR_test_cold_all_0.tsv')
+    # # 상호작용을 안한 유저, 즉 gt가 없는 유저를 제거
+    # if abs(len(users) - len(gt_indices)) > 0:
+    #     ratings = pd.read_csv('data\ML25M\BPR_cv\BPR_test_cold_all_0.tsv', sep='\t')
+    #     uids = set(ratings['uid'].unique())
 
-        null_mask = ~np.isin(np.arange(len(users)), list(uids))
-        # remove null users
-        users = np.delete(users, np.where(null_mask)[0], axis=0)
+    #     null_mask = ~np.isin(np.arange(len(users)), list(uids))
+    #     # remove null users
+    #     users = np.delete(users, np.where(null_mask)[0], axis=0)
 
-    # predicted indices
-    pred_indices, pred_scores = evaluate_utils.recommend(users, items_all, max_k)
+    # # predicted indices
+    # pred_indices, pred_scores = evaluate_utils.recommend(users, items_all, max_k)
 
-    # precision, recall, NDCG, MRR
-    pred_result = evaluate_utils.computeTopNAccuracy(gt_indices, pred_indices, eval(args.topN))
-    evaluate_utils.print_results(pred_result)
+    # # precision, recall, NDCG, MRR
+    # pred_result = evaluate_utils.computeTopNAccuracy(gt_indices, pred_indices, eval(args.topN))
+    # evaluate_utils.print_results(pred_result)
 
     
     

@@ -397,6 +397,7 @@ class GaussianDiffusion(nn.Module):
 
         ## case: image
         # img = normalize_to_neg_one_to_one(img)        # normalize image from (0 ~ 1) to (-1 ~ 1)
+        self.p_losses(img, torch.full(t.shape, 999, device=device).long(), *args, **kwargs)       ## erase
         return self.p_losses(img, t, *args, **kwargs)
     
 
