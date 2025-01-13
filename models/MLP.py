@@ -91,7 +91,11 @@ class MLP(nn.Module):
             nn.Linear(time_emb_dim, time_emb_dim)
         )
 
-        self.tag_embedding = nn.Sequential(nn.Linear(tag_emb_dim, in_dims[0]))
+        self.tag_embedding = nn.Sequential(
+            nn.Linear(tag_emb_dim, in_dims[0]),
+            # nn.GELU(),
+            # nn.Linear(in_dims[0], in_dims[0])
+            )
 
         if self.dim_type == "cat":
             # ex) [item_emb(128) + time_emb(10) + tag_emb(128), item_emb(128)]
@@ -148,7 +152,7 @@ class MLP(nn.Module):
             x = F.normalize(x)
 
         x = self.input_dropout(x)
-        # tag_emb = self.input_dropout(tag_emb)
+        tag_emb = self.input_dropout(tag_emb)
 
         h = torch.cat([x, time_emb, tag_emb], dim=-1)
         return self.mlp(h)
