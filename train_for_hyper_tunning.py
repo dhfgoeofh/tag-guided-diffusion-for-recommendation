@@ -41,10 +41,10 @@ def parse_args():
     parser.add_argument('--tag_emb_path', type=str, default='./data/ML25M/mv-tag-emb.npy', help='load tag emb path')
 
     # Model and training parameters
-    parser.add_argument('--num_t_samples', type=str, default='[1, 2, 3]', help='number of time(t) samples for training') ###
+    parser.add_argument('--num_t_samples', type=str, default='[1]', help='number of time(t) samples for training') ###
     parser.add_argument('--lr', type=float, default=0.0001, help='learning rate for MLP')
     parser.add_argument('--wd', type=float, default=0.0, help='weight decay for MLP')
-    parser.add_argument('--batch_size', type=str, default='[200, 400, 600]')    ###
+    parser.add_argument('--batch_size', type=str, default='[400]')    ###
     parser.add_argument('--epochs', type=int, default=1000, help='upper epoch limit')
     parser.add_argument('--cuda', action='store_true', help='use CUDA')
     parser.add_argument('--gpu', type=str, default='0', help='gpu card ID')
@@ -61,7 +61,7 @@ def parse_args():
     # Diffusion parameters
     parser.add_argument('--noise_scale', type=float, default=0.005, help='noise scale')
     parser.add_argument('--objective', type=str, default='pred_x0', help='objective type: pred_noise, pred_x0, pred_v')
-    parser.add_argument('--timesteps', type=str, default='[1000, 1500, 2000]', help='diffusion steps') ###
+    parser.add_argument('--timesteps', type=str, default='[1000]', help='diffusion steps') ###
     parser.add_argument('--noise_schedule', type=str, default='linear', help='the schedule for noise generating')
     
     return parser.parse_args()

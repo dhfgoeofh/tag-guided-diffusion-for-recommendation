@@ -17,8 +17,9 @@ class Trainer:
         self.num_t_samples = num_t_samples
         self.save_path = args.save_path
         self.act_func = args.mlp_act_func
-        self.num_layers = args.num_layers
         self.noise_schedule = args.noise_schedule
+        self.dropout = args.dropout
+        self.num_layers = len(eval(args.in_dims)) - 1
         if timesteps == None:
             self.timesteps = args.timesteps
         else:
@@ -67,7 +68,6 @@ class Trainer:
             if epoch % 10 == 0:
                 avg_valid_loss = self.validate(valid_loader)
                 
-
                 if avg_valid_loss < self.best_valid_loss:
                     self.best_valid_loss = avg_valid_loss
                     self.best_epoch = epoch + 1
@@ -76,6 +76,9 @@ class Trainer:
             if epoch % 100 == 0:
                 # self.save(epoch)
                 print(f"Epoch {epoch+1}/{self.epochs}, Training Loss: {avg_train_loss}, Validation Loss: {avg_valid_loss}")
+            
+            if epoch == self.epochs - 1: 
+                self.save(epoch)
         #print(f"Epoch {epoch+1}/{self.epochs}, Training Loss: {avg_train_loss}, Validation Loss: {avg_valid_loss}")
         print('')
 
@@ -87,11 +90,17 @@ class Trainer:
             for item_batch, tag_batch in valid_loader:
                 item_batch, tag_batch = item_batch.cuda(), tag_batch.cuda()
                 
-                # Sample generation using diffusion's sample method
-                generated_samples = self.diffusion.sample(classes=tag_batch)
+                # # Sample generation using diffusion's sample method
+                # generated_samples = self.diffusion.sample(classes=tag_batch)
                 
-                # Calculate loss based on the generated samples and ground truth
-                loss = self.calculate_loss(generated_samples, item_batch)
+                # # Calculate loss based on the generated samples and ground truth
+                # loss = self.calculate_loss(generated_samples, item_batch)
+                loss = 0
+                for _ in range(self.num_t_samples):  # 샘플링 수만큼 반복하여 로스를 누적
+                    loss += self.diffusion(item_batch, classes=tag_batch)
+
+                loss = loss / self.num_t_samples  # 평균 손실 계산
+
                 total_valid_loss += loss.item()
 
         return total_valid_loss / len(valid_loader)
@@ -149,11 +158,11 @@ class Trainer:
         os.makedirs(self.save_path, exist_ok=True)
 
         data = {
-            'epochs': epoch,
+            'epochs': self.epochs,
             'state_dict': self.model.state_dict()
         }
 
-        torch.save(data, os.path.join(self.save_path, f'model-{epoch}epoch-{self.timesteps}timesteps.pt'))
+        torch.save(data, os.path.join(self.save_path, f'last_{self.diffusion.objective}_{self.noise_schedule}_{self.num_layers}layer_dropout{self.dropout}_{self.act_func}_{self.timesteps}timesteps.pt'))
 
     def save_best_model(self):
         os.makedirs(self.save_path, exist_ok=True)
@@ -163,4 +172,4 @@ class Trainer:
             'state_dict': self.model.state_dict()
         }
 
-        torch.save(data, os.path.join(self.save_path, f'best_{self.diffusion.objective}_{self.noise_schedule}_{self.act_func}_{self.num_layers}_{self.timesteps}timesteps.pt'))
+        torch.save(data, os.path.join(self.save_path, f'best_{self.diffusion.objective}_{self.noise_schedule}_{self.num_layers}layer_dropout{self.dropout}_{self.act_func}_{self.timesteps}timesteps.pt'))

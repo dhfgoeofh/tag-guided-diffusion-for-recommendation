@@ -38,7 +38,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     # Evaluation Parameters
-    parser.add_argument('--topN', type=str, default='[5, 10, 25, 50, 75, 100]', help='top N items for evaluation.')
+    parser.add_argument('--topN', type=str, default='[5, 10, 20, 30, 50, 100]', help='top N items for evaluation.')
     parser.add_argument('--gt_path', type=str, default='./data/ML25M/BPR_cv/cold_movies_rating_all_0.tsv', help='preference items of each user')
 
     # Data paths
@@ -58,8 +58,7 @@ def parse_args():
 
     # MLP parameters
     parser.add_argument('--dropout', type=float, default=0.5, help='dropout rate of MLP layer')
-    parser.add_argument('--num_layers', type=int, default=5, help='number of MLP layers')
-    parser.add_argument('--in_dims', type=int, default=128, help='the dims for item embedding')
+    parser.add_argument('--in_dims', type=str, default='[128, 600, 600, 600, 128]', help='the dims for item embedding')
     parser.add_argument('--tag_emb_dim', type=int, default=400, help='the dims for tag embedding')
     parser.add_argument('--time_emb_dim', type=int, default=10, help='timestep embedding size')
     parser.add_argument('--mlp_act_func', type=str, default='tanh', help='the activation function for MLP')
@@ -74,9 +73,10 @@ def parse_args():
     return parser.parse_args()
 
 
-def load_model(model, diffusion, args, device):
+def load_model(model, diffusion, args, state='best'):
     # Load saved model weights
-    model_checkpoint = os.path.join(args.save_path, f'best_{args.objective}_{args.noise_schedule}_{args.mlp_act_func}_{args.num_layers}_{args.timesteps}timesteps.pt')
+    num_layer = len(eval(args.in_dims)) - 1
+    model_checkpoint = os.path.join(args.save_path, f'{state}_{args.objective}_{args.noise_schedule}_{num_layer}layer_dropout{args.dropout}_{args.mlp_act_func}_{args.timesteps}timesteps.pt')
     if os.path.exists(model_checkpoint):
         model.load_state_dict(torch.load(model_checkpoint)['state_dict'])
         print("Model loaded successfully from", model_checkpoint)
@@ -94,224 +94,225 @@ if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     device = torch.device("cuda:0" if args.cuda else "cpu")
 
-    # Load data and prepare DataLoader
-    data_loader_builder = DataLoaderBuilder(args.emb_path, args.tag_emb_path, args.batch_size)
-    items, tags, zero_rows = data_loader_builder.load_vt_data()
-    dataloader = data_loader_builder.prepare_dataloaders_vt(items, tags)
-
-    ### model ###
-    model = MLP(
-                in_dims=[args.in_dims],
-                out_dims=[args.in_dims],
-                time_emb_dim=args.time_emb_dim,
-                tag_emb_dim=args.tag_emb_dim,
-                act_func=args.mlp_act_func,
-                num_layers=args.num_layers
-                ).cuda()
+    states = ['best', 'last']
     
-    diffusion = GaussianDiffusion(
-                                  model,
-                                  x_size = args.in_dims,
-                                  timesteps = args.timesteps,
-                                  objective=args.objective,
-                                  beta_schedule=args.noise_schedule
-                                  ).cuda()
-    
-    model, diffusion = load_model(model, diffusion, args, device)
+    for state in states:
+        # Load data and prepare DataLoader
+        data_loader_builder = DataLoaderBuilder(args.emb_path, args.tag_emb_path, args.batch_size)
+        items, tags, zero_rows = data_loader_builder.load_vt_data()
+        dataloader = data_loader_builder.prepare_dataloaders_vt(items, tags)
 
-    # if args.optimizer == 'Adagrad':
-    #     optimizer = optim.Adagrad(
-    #         model.parameters(), lr=args.lr, initial_accumulator_value=1e-8, weight_decay=args.wd)
-    # elif args.optimizer == 'Adam':
-    #     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wd)
-    # elif args.optimizer == 'AdamW':
-    #     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
-    # elif args.optimizer == 'SGD':
-    #     optimizer = optim.SGD(model.parameters(), lr=args.lr, weight_decay=args.wd)
-    # elif args.optimizer == 'Momentum':
-    #     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.95, weight_decay=args.wd)
-
-    print("models ready.")
-
-
-    # Train and validate
-    trainer = Trainer(model, diffusion, device, args.num_t_samples, args)
-    
-    # user
-    users = np.load(args.user_path)
-    # items (orgin, sample, orgin + sample)
-    items_orgin = np.load(args.emb_path).astype(np.float32)
-    zero_rows = np.all(items_orgin == 0, axis=1)
-    vali_rows = pd.read_csv('./data/ML25M/BPR_cv/cold_movies_vali_0.tsv', sep='\t')['mid'].tolist()
-    test_rows = pd.read_csv('./data/ML25M/BPR_cv/cold_movies_test_0.tsv', sep='\t')['mid'].tolist()
-    
-    # items_bpr : train, val, test of BPR model(non-zero)
-    items_bpr, _, zero_idxs = data_loader_builder.load_vt_data(is_sample=False)
-    items_sampled = trainer.sample_item_emb(dataloader)
-    items_all = items_orgin.copy()
-    
-    items_all[zero_rows] = items_sampled
-
-    ### get average embeddings size ###
-    bpr_norms = np.linalg.norm(items_bpr, axis=1)
-    average_bpr_norm = np.mean(bpr_norms)
-
-    sample_norms = np.linalg.norm(items_sampled, axis=1)    
-    average_sample_norm = np.mean(sample_norms)
-
-    print(f'Avg BPR Norm: {average_bpr_norm}')
-    print(f'Avg Sampled Norm: {average_sample_norm}')
-
-    # ### sample scaling ###
-    # sampled_norms = np.linalg.norm(items_sampled, axis=1)
-
-    # # Calculate the average L2 norm for both original and sampled embeddings
-    # average_train_norm = np.mean(train_norms)
-    # average_sampled_norm = np.mean(sampled_norms)
-
-    # # Compute the scaling factor to match the norms
-    # scaling_factor = average_train_norm / average_sampled_norm
-
-    # # Apply the scaling factor to the sampled embeddings
-    # items_sampled = items_sampled * scaling_factor
-
-    # # Apply the scaled sampled embeddings to the zero rows in items_all
-    # items_all[zero_rows] = items_sampled
-
-
-    
-    
-    max_k = eval(args.topN)[-1]
-
-    # print("#" * 16)
-    # print('Test(BPR)')
-    # print("#" * 16)
-    # users_idx = pd.read_csv('data\ML25M\BPR_cv\BPR_test_0.tsv', sep='\t')['uid'].unique()
-    # users = np.load(args.user_path)[users_idx]
-    
-    # gt_indices = evaluate_utils.get_ground_truth('data\ML25M\BPR_cv\BPR_test_0.tsv')
-
-    # # 상호작용을 안한 유저, 즉 gt가 없는 유저를 제거
-    # if abs(len(users) - len(gt_indices)) > 0:
-    #     ratings = pd.read_csv('data\ML25M\BPR_cv\BPR_test_0.tsv', sep='\t')
-    #     uids = set(ratings['uid'].unique())
-
-    #     null_mask = ~np.isin(np.arange(len(users)), list(uids))
-    #     # remove null users
-    #     users = np.delete(users, np.where(null_mask)[0], axis=0)
+        ### model ###
+        model = MLP(
+                    in_dims=eval(args.in_dims),
+                    time_emb_dim=args.time_emb_dim,
+                    tag_emb_dim=args.tag_emb_dim,
+                    act_func=args.mlp_act_func,
+                    ).cuda()
         
-    # # predicted indices
-    # pred_indices, pred_scores = evaluate_utils.recommend(users, items_bpr, max_k)
+        diffusion = GaussianDiffusion(
+                                    model,
+                                    x_size = eval(args.in_dims)[0],
+                                    timesteps = args.timesteps,
+                                    objective=args.objective,
+                                    beta_schedule=args.noise_schedule
+                                    ).cuda()
+        
+        model, diffusion = load_model(model, diffusion, args, state)
 
-    # item_idxs = np.where(zero_rows == False)
-    # pred_indices = item_idxs[0][pred_indices]
- 
-    # # precision, recall, NDCG, MRR
-    # pred_result = evaluate_utils.computeTopNAccuracy(gt_indices, pred_indices, eval(args.topN))
-    # evaluate_utils.print_results(pred_result)
+        # if args.optimizer == 'Adagrad':
+        #     optimizer = optim.Adagrad(
+        #         model.parameters(), lr=args.lr, initial_accumulator_value=1e-8, weight_decay=args.wd)
+        # elif args.optimizer == 'Adam':
+        #     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.wd)
+        # elif args.optimizer == 'AdamW':
+        #     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
+        # elif args.optimizer == 'SGD':
+        #     optimizer = optim.SGD(model.parameters(), lr=args.lr, weight_decay=args.wd)
+        # elif args.optimizer == 'Momentum':
+        #     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.95, weight_decay=args.wd)
+
+        print("models ready.")
 
 
-    # print("#" * 16)
-    # print('Random')
-    # print("#" * 16)
-    # users = np.load(args.user_path)
-    # gt_indices = evaluate_utils.get_ground_truth(args.gt_path)
+        # Train and validate
+        trainer = Trainer(model, diffusion, device, args.num_t_samples, args)
+        
+        # user
+        users = np.load(args.user_path)
+        # items (orgin, sample, orgin + sample)
+        items_orgin = np.load(args.emb_path).astype(np.float32)
+        zero_rows = np.all(items_orgin == 0, axis=1)
+        vali_rows = pd.read_csv('./data/ML25M/BPR_cv/cold_movies_vali_0.tsv', sep='\t')['mid'].tolist()
+        test_rows = pd.read_csv('./data/ML25M/BPR_cv/cold_movies_test_0.tsv', sep='\t')['mid'].tolist()
+        
+        # items_bpr : train, val, test of BPR model(non-zero)
+        items_bpr, _, zero_idxs = data_loader_builder.load_vt_data(is_sample=False)
+        items_sampled = trainer.sample_item_emb(dataloader)
+        items_all = items_orgin.copy()
+        
+        items_all[zero_rows] = items_sampled
 
-    # # 상호작용을 안한 유저, 즉 gt가 없는 유저를 제거
-    # if abs(len(users) - len(gt_indices)) > 0:
-    #     ratings = pd.read_csv(args.gt_path, sep='\t')
-    #     uids = set(ratings['uid'].unique())
+        ### get average embeddings size ###
+        bpr_norms = np.linalg.norm(items_bpr, axis=1)
+        average_bpr_norm = np.mean(bpr_norms)
 
-    #     null_mask = ~np.isin(np.arange(len(users)), list(uids))
-    #     # remove null users
-    #     users = np.delete(users, np.where(null_mask)[0], axis=0)
+        sample_norms = np.linalg.norm(items_sampled, axis=1)    
+        average_sample_norm = np.mean(sample_norms)
 
-    # ## predicted indices
-    # # pred_indices, pred_scores = evaluate_utils.recommend(users, items_sampled, max_k)
-    # item_idxs = np.where(zero_rows == True)
+        print(f'Avg CF(ground truth) Norm: {average_bpr_norm}')
+        print(f'Avg Sampled Norm: {average_sample_norm}')
 
-    # ## Random prediction
-    # matrix = np.zeros((len(users), max_k), dtype=int)
+        # ### sample scaling ###
+        # sampled_norms = np.linalg.norm(items_sampled, axis=1)
+
+        # # Calculate the average L2 norm for both original and sampled embeddings
+        # average_train_norm = np.mean(train_norms)
+        # average_sampled_norm = np.mean(sampled_norms)
+
+        # # Compute the scaling factor to match the norms
+        # scaling_factor = average_train_norm / average_sampled_norm
+
+        # # Apply the scaling factor to the sampled embeddings
+        # items_sampled = items_sampled * scaling_factor
+
+        # # Apply the scaled sampled embeddings to the zero rows in items_all
+        # items_all[zero_rows] = items_sampled
+
+
+        
+        
+        max_k = eval(args.topN)[-1]
+
+        # print("#" * 16)
+        # print('Test(BPR)')
+        # print("#" * 16)
+        # users_idx = pd.read_csv('data\ML25M\BPR_cv\BPR_test_0.tsv', sep='\t')['uid'].unique()
+        # users = np.load(args.user_path)[users_idx]
+        
+        # gt_indices = evaluate_utils.get_ground_truth('data\ML25M\BPR_cv\BPR_test_0.tsv')
+
+        # # 상호작용을 안한 유저, 즉 gt가 없는 유저를 제거
+        # if abs(len(users) - len(gt_indices)) > 0:
+        #     ratings = pd.read_csv('data\ML25M\BPR_cv\BPR_test_0.tsv', sep='\t')
+        #     uids = set(ratings['uid'].unique())
+
+        #     null_mask = ~np.isin(np.arange(len(users)), list(uids))
+        #     # remove null users
+        #     users = np.delete(users, np.where(null_mask)[0], axis=0)
+            
+        # # predicted indices
+        # pred_indices, pred_scores = evaluate_utils.recommend(users, items_bpr, max_k)
+
+        # item_idxs = np.where(zero_rows == False)
+        # pred_indices = item_idxs[0][pred_indices]
     
-    # for i in range((len(users))):
-    #     matrix[i] = np.random.choice(len(item_idxs[0]), size=max_k, replace=False)
-
-    # pred_indices = item_idxs[0][matrix]
-
-    # # precision, recall, NDCG, MRR
-    # pred_result = evaluate_utils.computeTopNAccuracy(gt_indices, pred_indices, eval(args.topN))
-    # evaluate_utils.print_results(pred_result)
+        # # precision, recall, NDCG, MRR
+        # pred_result = evaluate_utils.computeTopNAccuracy(gt_indices, pred_indices, eval(args.topN))
+        # evaluate_utils.print_results(pred_result)
 
 
-    print("#" * 16)
-    print('Sample')
-    print("#" * 16)
-    users = np.load(args.user_path)
-    gt_indices = evaluate_utils.get_ground_truth(args.gt_path)
+        # print("#" * 16)
+        # print('Random')
+        # print("#" * 16)
+        # users = np.load(args.user_path)
+        # gt_indices = evaluate_utils.get_ground_truth(args.gt_path)
 
-    # 상호작용을 안한 유저, 즉 gt가 없는 유저를 제거
-    if abs(len(users) - len(gt_indices)) > 0:
-        ratings = pd.read_csv(args.gt_path, sep='\t')
-        uids = set(ratings['uid'].unique())
+        # # 상호작용을 안한 유저, 즉 gt가 없는 유저를 제거
+        # if abs(len(users) - len(gt_indices)) > 0:
+        #     ratings = pd.read_csv(args.gt_path, sep='\t')
+        #     uids = set(ratings['uid'].unique())
 
-        null_mask = ~np.isin(np.arange(len(users)), list(uids))
-        # remove null users
-        users = np.delete(users, np.where(null_mask)[0], axis=0)
+        #     null_mask = ~np.isin(np.arange(len(users)), list(uids))
+        #     # remove null users
+        #     users = np.delete(users, np.where(null_mask)[0], axis=0)
 
-    # predicted indices
-    pred_indices, pred_scores = evaluate_utils.recommend(users, items_sampled, max_k)
+        # ## predicted indices
+        # # pred_indices, pred_scores = evaluate_utils.recommend(users, items_sampled, max_k)
+        # item_idxs = np.where(zero_rows == True)
 
-    item_idxs = np.where(zero_rows == True)
-    pred_indices = item_idxs[0][pred_indices]
+        # ## Random prediction
+        # matrix = np.zeros((len(users), max_k), dtype=int)
+        
+        # for i in range((len(users))):
+        #     matrix[i] = np.random.choice(len(item_idxs[0]), size=max_k, replace=False)
 
-    # precision, recall, NDCG, MRR
-    pred_result = evaluate_utils.computeTopNAccuracy(gt_indices, pred_indices, eval(args.topN))
-    evaluate_utils.print_results(pred_result)
+        # pred_indices = item_idxs[0][matrix]
+
+        # # precision, recall, NDCG, MRR
+        # pred_result = evaluate_utils.computeTopNAccuracy(gt_indices, pred_indices, eval(args.topN))
+        # evaluate_utils.print_results(pred_result)
 
 
-    # print("#" * 16)
-    # print('Test(BPR) + Cold-Item')
-    # print("#" * 16)
-    
-    # users = np.load(args.user_path)
-    # gt_indices = evaluate_utils.get_ground_truth('data\ML25M\BPR_cv\BPR_test_cold_all_0.tsv')
-    # # 상호작용을 안한 유저, 즉 gt가 없는 유저를 제거
-    # if abs(len(users) - len(gt_indices)) > 0:
-    #     ratings = pd.read_csv('data\ML25M\BPR_cv\BPR_test_cold_all_0.tsv', sep='\t')
-    #     uids = set(ratings['uid'].unique())
+        print("#" * 16)
+        print('Sample')
+        print("#" * 16)
+        users = np.load(args.user_path)
+        gt_indices = evaluate_utils.get_ground_truth(args.gt_path)
 
-    #     null_mask = ~np.isin(np.arange(len(users)), list(uids))
-    #     # remove null users
-    #     users = np.delete(users, np.where(null_mask)[0], axis=0)
+        # 상호작용을 안한 유저, 즉 gt가 없는 유저를 제거
+        if abs(len(users) - len(gt_indices)) > 0:
+            ratings = pd.read_csv(args.gt_path, sep='\t')
+            uids = set(ratings['uid'].unique())
 
-    # # predicted indices
-    # pred_indices, pred_scores = evaluate_utils.recommend(users, items_orgin, max_k)
+            null_mask = ~np.isin(np.arange(len(users)), list(uids))
+            # remove null users
+            users = np.delete(users, np.where(null_mask)[0], axis=0)
 
-    # # precision, recall, NDCG, MRR
-    # pred_result = evaluate_utils.computeTopNAccuracy(gt_indices, pred_indices, eval(args.topN))
-    # evaluate_utils.print_results(pred_result)
-    
+        # predicted indices
+        pred_indices, pred_scores = evaluate_utils.recommend(users, items_sampled, max_k)
 
-    # print("#" * 16)
-    # print('Test(BPR) + Cold-Item(Sampled)')
-    # print("#" * 16)
-    # users = np.load(args.user_path)
-    # gt_indices = evaluate_utils.get_ground_truth('data\ML25M\BPR_cv\BPR_test_cold_all_0.tsv')
-    # # 상호작용을 안한 유저, 즉 gt가 없는 유저를 제거
-    # if abs(len(users) - len(gt_indices)) > 0:
-    #     ratings = pd.read_csv('data\ML25M\BPR_cv\BPR_test_cold_all_0.tsv', sep='\t')
-    #     uids = set(ratings['uid'].unique())
+        item_idxs = np.where(zero_rows == True)
+        pred_indices = item_idxs[0][pred_indices]
 
-    #     null_mask = ~np.isin(np.arange(len(users)), list(uids))
-    #     # remove null users
-    #     users = np.delete(users, np.where(null_mask)[0], axis=0)
+        # precision, recall, NDCG, MRR
+        pred_result = evaluate_utils.computeTopNAccuracy(gt_indices, pred_indices, eval(args.topN))
+        evaluate_utils.print_results(test_result=pred_result, state=state)
 
-    # # predicted indices
-    # pred_indices, pred_scores = evaluate_utils.recommend(users, items_all, max_k)
 
-    # # precision, recall, NDCG, MRR
-    # pred_result = evaluate_utils.computeTopNAccuracy(gt_indices, pred_indices, eval(args.topN))
-    # evaluate_utils.print_results(pred_result)
+        # print("#" * 16)
+        # print('Test(BPR) + Cold-Item')
+        # print("#" * 16)
+        
+        # users = np.load(args.user_path)
+        # gt_indices = evaluate_utils.get_ground_truth('data\ML25M\BPR_cv\BPR_test_cold_all_0.tsv')
+        # # 상호작용을 안한 유저, 즉 gt가 없는 유저를 제거
+        # if abs(len(users) - len(gt_indices)) > 0:
+        #     ratings = pd.read_csv('data\ML25M\BPR_cv\BPR_test_cold_all_0.tsv', sep='\t')
+        #     uids = set(ratings['uid'].unique())
+
+        #     null_mask = ~np.isin(np.arange(len(users)), list(uids))
+        #     # remove null users
+        #     users = np.delete(users, np.where(null_mask)[0], axis=0)
+
+        # # predicted indices
+        # pred_indices, pred_scores = evaluate_utils.recommend(users, items_orgin, max_k)
+
+        # # precision, recall, NDCG, MRR
+        # pred_result = evaluate_utils.computeTopNAccuracy(gt_indices, pred_indices, eval(args.topN))
+        # evaluate_utils.print_results(pred_result)
+        
+
+        # print("#" * 16)
+        # print('Test(BPR) + Cold-Item(Sampled)')
+        # print("#" * 16)
+        # users = np.load(args.user_path)
+        # gt_indices = evaluate_utils.get_ground_truth('data\ML25M\BPR_cv\BPR_test_cold_all_0.tsv')
+        # # 상호작용을 안한 유저, 즉 gt가 없는 유저를 제거
+        # if abs(len(users) - len(gt_indices)) > 0:
+        #     ratings = pd.read_csv('data\ML25M\BPR_cv\BPR_test_cold_all_0.tsv', sep='\t')
+        #     uids = set(ratings['uid'].unique())
+
+        #     null_mask = ~np.isin(np.arange(len(users)), list(uids))
+        #     # remove null users
+        #     users = np.delete(users, np.where(null_mask)[0], axis=0)
+
+        # # predicted indices
+        # pred_indices, pred_scores = evaluate_utils.recommend(users, items_all, max_k)
+
+        # # precision, recall, NDCG, MRR
+        # pred_result = evaluate_utils.computeTopNAccuracy(gt_indices, pred_indices, eval(args.topN))
+        # evaluate_utils.print_results(pred_result)
 
     
     

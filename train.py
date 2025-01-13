@@ -45,15 +45,14 @@ def parse_args():
     parser.add_argument('--lr', type=float, default=0.0001, help='learning rate for MLP')
     parser.add_argument('--wd', type=float, default=0.0, help='weight decay for MLP')
     parser.add_argument('--batch_size', type=int, default=400)
-    parser.add_argument('--epochs', type=int, default=10000, help='upper epoch limit')
+    parser.add_argument('--epochs', type=int, default=5000, help='upper epoch limit')
     parser.add_argument('--cuda', action='store_true', help='use CUDA')
     parser.add_argument('--gpu', type=str, default='0', help='gpu card ID')
     parser.add_argument('--save_path', type=str, default='./saved_models/', help='save model path')
 
     # MLP parameters
-    parser.add_argument('--dropout', type=float, default=0.0, help='dropout rate of MLP layer')
-    parser.add_argument('--num_layers', type=int, default=5, help='number of MLP layers')
-    parser.add_argument('--in_dims', type=int, default=128, help='the dims for item embedding')
+    parser.add_argument('--dropout', type=float, default=0.5, help='dropout rate of MLP layer')
+    parser.add_argument('--in_dims', type=str, default='[128, 600, 600, 600, 128]', help='the dims for item embedding')
     parser.add_argument('--tag_emb_dim', type=int, default=400, help='the dims for tag embedding')
     parser.add_argument('--time_emb_dim', type=int, default=10, help='timestep embedding size')
     parser.add_argument('--mlp_act_func', type=str, default='tanh', help='the activation function for MLP')
@@ -83,21 +82,18 @@ if __name__ == '__main__':
                                                                                       train_items, valid_items, test_items, 
                                                                                       train_tags, valid_tags, test_tags
                                                                                       )
-
     ### model ###
     model = MLP(
-                in_dims=[args.in_dims],
-                out_dims=[args.in_dims],
+                in_dims=eval(args.in_dims),
                 time_emb_dim=args.time_emb_dim,
                 tag_emb_dim=args.tag_emb_dim,
                 act_func=args.mlp_act_func,
-                num_layers=args.num_layers,
                 dropout=args.dropout
                 ).cuda()
     
     diffusion = GaussianDiffusion(
                                   model,
-                                  x_size = args.in_dims,
+                                  x_size = eval(args.in_dims)[0],
                                   timesteps = args.timesteps,
                                   objective=args.objective,
                                   beta_schedule=args.noise_schedule

@@ -48,7 +48,6 @@ class MLP(nn.Module):
     def __init__ (
                   self, 
                   in_dims, 
-                  out_dims, 
                   time_emb_dim, 
                   tag_emb_dim, 
                   channels=None, 
@@ -59,15 +58,14 @@ class MLP(nn.Module):
                   random_fourier_features=False, 
                   norm=False, 
                   dropout=0.5,
-                  num_layers=1
         ):
         
         super().__init__()
 
         self.model_type = MLP
         self.in_dims = in_dims
-        self.out_dims = out_dims
-        assert out_dims[0] == in_dims[-1], "In and out dimensions must equal to each other."
+        self.out_dims = self.in_dims[::-1]
+        assert self.out_dims[0] == self.in_dims[-1], "In and out dimensions must equal to each other."
         self.norm = norm
         self.time_emb_dim = time_emb_dim
         self.tag_emb_dim = tag_emb_dim
@@ -75,7 +73,7 @@ class MLP(nn.Module):
         self.dim_type = dim_type
         self.learned_sinusoidal_dim = learned_sinusoidal_dim
         self.dropout = dropout
-        self.num_layers = num_layers
+        self.num_layers = len(self.in_dims) - 1
 
         self.random_or_learned_sinusoidal_cond = learned_sinusoidal_cond or random_fourier_features
 
@@ -93,22 +91,17 @@ class MLP(nn.Module):
             nn.Linear(time_emb_dim, time_emb_dim)
         )
 
-        self.tag_embedding = nn.Sequential(
-            nn.Linear(tag_emb_dim, in_dims[0]),
-            nn.GELU(),
-            nn.Linear(in_dims[0], in_dims[0]),
-        )
+        self.tag_embedding = nn.Sequential(nn.Linear(tag_emb_dim, in_dims[0]))
 
         if self.dim_type == "cat":
-            # ex) [item_emb(128) + time_emb(10) + tag_emb(128)] + [item_emb(128)]
-            in_dim = self.in_dims[0] + self.time_emb_dim + self.in_dims[0]
+            # ex) [item_emb(128) + time_emb(10) + tag_emb(128), item_emb(128)]
+            self.in_dims[0] = self.in_dims[0]*2 + self.time_emb_dim
         else:
             raise ValueError("Unimplemented timestep embedding type %s" % self.dim_type)
         
         layers = []
-        layers.append(nn.Dropout(self.dropout))
-        for _ in range(self.num_layers - 1):
-            layers.append(nn.Linear(in_dim, in_dim))
+        for i in range(self.num_layers - 1):
+            layers.append(nn.Linear(self.in_dims[i], self.in_dims[i+1]))
             if act_func == 'tanh':
                 layers.append(nn.Tanh())
             elif act_func == 'relu':
@@ -120,8 +113,10 @@ class MLP(nn.Module):
             else:
                 raise ValueError("Unsupported activation function %s" % act_func)
             layers.append(nn.Dropout(self.dropout))
-        
-        layers.append(nn.Linear(in_dim, self.out_dims[0]))
+         
+        layers.append(nn.Linear(self.in_dims[self.num_layers-1], self.out_dims[0]))
+
+        self.input_dropout = nn.Dropout(self.dropout)
         self.mlp = nn.Sequential(*layers)
 
         self.init_weights()
@@ -151,5 +146,9 @@ class MLP(nn.Module):
         tag_emb = self.tag_embedding(tag).to(x.device)
         if self.norm:
             x = F.normalize(x)
+
+        x = self.input_dropout(x)
+        # tag_emb = self.input_dropout(tag_emb)
+
         h = torch.cat([x, time_emb, tag_emb], dim=-1)
         return self.mlp(h)

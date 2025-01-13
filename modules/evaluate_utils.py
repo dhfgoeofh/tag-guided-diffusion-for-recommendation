@@ -3,7 +3,7 @@ import pandas as pd
 import bottleneck as bn
 import torch
 import math
-
+from datetime import datetime
 
 def recommend(user_embeddings, item_embeddings, max_k):
     """
@@ -82,22 +82,47 @@ def computeTopNAccuracy(GroundTruth, predictedIndices, topN):
     return precision, recall, NDCG, MRR
 
 
-def print_results(valid_result, test_result=None, loss=None):
-    """output the evaluation results."""
-    if loss is not None:
-        print("[Train]: loss: {:.4f}".format(loss))
-    if valid_result is not None: 
-        print("[Valid]: \n Precision: {} \n Recall: {} \n NDCG: {} \n MRR: {}".format(
-                            '-'.join([str(x) for x in valid_result[0]]), 
-                            '-'.join([str(x) for x in valid_result[1]]), 
-                            '-'.join([str(x) for x in valid_result[2]]), 
-                            '-'.join([str(x) for x in valid_result[3]])))
-    if test_result is not None: 
-        print("[Test]: Precision: {} Recall: {} NDCG: {} MRR: {}".format(
-                            '-'.join([str(x) for x in test_result[0]]), 
-                            '-'.join([str(x) for x in test_result[1]]), 
-                            '-'.join([str(x) for x in test_result[2]]), 
-                            '-'.join([str(x) for x in test_result[3]])))
+def print_results(valid_result=None, test_result=None, loss=None, state=None):
+    """Output the evaluation results with tab-separated format for easy Excel pasting."""
+    file_path = './result/evaluation_results.txt'
+    with open(file_path, 'a') as f:
+        if loss is not None:
+            output = f"[Train]\tloss:\t{loss:.4f}\n"
+            print(output.strip())
+            f.write(output)
+        if valid_result is not None:
+            valid_precision = '\t'.join([str(x) for x in valid_result[0]])
+            valid_recall = '\t'.join([str(x) for x in valid_result[1]])
+            valid_ndcg = '\t'.join([str(x) for x in valid_result[2]])
+            valid_mrr = '\t'.join([str(x) for x in valid_result[3]])
+
+            time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            output = (
+                f"[Valid] {time}\n"
+                f"Precision:\t{valid_precision}\n"
+                f"Recall:\t{valid_recall}\n"
+                f"NDCG:\t{valid_ndcg}\n"
+                f"MRR:\t{valid_mrr}\n"
+            )
+            print(output.strip())
+            f.write(output)
+        if test_result is not None:
+            test_precision = '\t'.join([str(x) for x in test_result[0]])
+            test_recall = '\t'.join([str(x) for x in test_result[1]])
+            test_ndcg = '\t'.join([str(x) for x in test_result[2]])
+            test_mrr = '\t'.join([str(x) for x in test_result[3]])
+
+            time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            output = (
+                f"[Test with {state} model] {time}\n"
+                f"Precision:\t{test_precision}\n"
+                f"Recall:\t{test_recall}\n"
+                f"NDCG:\t{test_ndcg}\n"
+                f"MRR:\t{test_mrr}\n"
+            )
+            print(output.strip())
+            f.write(output)
+
         
 
 def get_ground_truth(path):
