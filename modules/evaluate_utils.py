@@ -99,10 +99,11 @@ def print_results(valid_result=None, test_result=None, loss=None, state=None):
             time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             output = (
                 f"[Valid] {time}\n"
-                f"Precision:\t{valid_precision}\n"
-                f"Recall:\t{valid_recall}\n"
+                f"Pr:\t{valid_precision}\n"
+                f"Re:\t{valid_recall}\n"
                 f"NDCG:\t{valid_ndcg}\n"
                 f"MRR:\t{valid_mrr}\n"
+                f"########################################################\n"
             )
             print(output.strip())
             f.write(output)
@@ -115,10 +116,11 @@ def print_results(valid_result=None, test_result=None, loss=None, state=None):
             time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             output = (
                 f"[Test with {state} model] {time}\n"
-                f"Precision:\t{test_precision}\n"
-                f"Recall:\t{test_recall}\n"
+                f"Pr:\t{test_precision}\n"
+                f"Re:\t{test_recall}\n"
                 f"NDCG:\t{test_ndcg}\n"
                 f"MRR:\t{test_mrr}\n"
+                f"########################################################\n"
             )
             print(output.strip())
             f.write(output)
