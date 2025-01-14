@@ -51,11 +51,8 @@ class Trainer:
 
             for item_batch, tag_batch in train_loader:
                 item_batch, tag_batch = item_batch.cuda(), tag_batch.cuda()
-                loss = 0
-                for _ in range(self.num_t_samples):  # 샘플링 수만큼 반복하여 로스를 누적
-                    loss += self.diffusion(item_batch, classes=tag_batch)
 
-                loss = loss / self.num_t_samples  # 평균 손실 계산
+                loss = self.diffusion(item_batch, classes=tag_batch)
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -65,13 +62,12 @@ class Trainer:
 
             avg_train_loss = total_train_loss / len(train_loader)
 
-            if epoch % 10 == 0:
-                avg_valid_loss = self.validate(valid_loader)
-                
-                if avg_valid_loss < self.best_valid_loss:
-                    self.best_valid_loss = avg_valid_loss
-                    self.best_epoch = epoch + 1
-                    self.save_best_model()
+            avg_valid_loss = self.validate(valid_loader)
+            
+            if avg_valid_loss < self.best_valid_loss:
+                self.best_valid_loss = avg_valid_loss
+                self.best_epoch = epoch + 1
+                self.save_best_model()
 
             if epoch % 100 == 0:
                 # self.save(epoch)
@@ -80,7 +76,6 @@ class Trainer:
             if epoch == self.epochs - 1: 
                 self.save(epoch)
         #print(f"Epoch {epoch+1}/{self.epochs}, Training Loss: {avg_train_loss}, Validation Loss: {avg_valid_loss}")
-        print('')
 
     def validate(self, valid_loader):
         self.model.eval()
@@ -89,18 +84,10 @@ class Trainer:
         with torch.no_grad():
             for item_batch, tag_batch in valid_loader:
                 item_batch, tag_batch = item_batch.cuda(), tag_batch.cuda()
-                
-                # # Sample generation using diffusion's sample method
-                # generated_samples = self.diffusion.sample(classes=tag_batch)
-                
-                # # Calculate loss based on the generated samples and ground truth
-                # loss = self.calculate_loss(generated_samples, item_batch)
-                loss = 0
-                for _ in range(self.num_t_samples):  # 샘플링 수만큼 반복하여 로스를 누적
-                    loss += self.diffusion(item_batch, classes=tag_batch)
 
-                loss = loss / self.num_t_samples  # 평균 손실 계산
-
+                # loss = self.diffusion.sample(classes=tag_batch)로 Inference 하는 방식에서, 
+                # loss = self.diffusion(item_batch, tag_batch)로 training loss와 동일 계산 방식으로 변경
+                loss = self.diffusion(item_batch, classes=tag_batch)
                 total_valid_loss += loss.item()
 
         return total_valid_loss / len(valid_loader)
@@ -113,11 +100,9 @@ class Trainer:
             for item_batch, tag_batch in test_loader:
                 item_batch, tag_batch = item_batch.cuda(), tag_batch.cuda()
                 
-                # Sample generation using diffusion's sample method
-                generated_samples = self.diffusion.sample(classes=tag_batch)
-                
-                # Calculate loss based on the generated samples and ground truth
-                loss = self.calculate_loss(generated_samples, item_batch)
+                # loss = self.diffusion.sample(classes=tag_batch)로 Inference 하는 방식에서, 
+                # loss = self.diffusion(item_batch, tag_batch)로 training loss와 동일 계산 방식으로 변경
+                loss = self.diffusion(item_batch, classes=tag_batch)
                 total_test_loss += loss.item()
 
         avg_test_loss = total_test_loss / len(test_loader)
