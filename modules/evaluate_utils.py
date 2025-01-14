@@ -82,7 +82,7 @@ def computeTopNAccuracy(GroundTruth, predictedIndices, topN):
     return precision, recall, NDCG, MRR
 
 
-def print_results(valid_result=None, test_result=None, loss=None, state=None):
+def print_results(valid_result=None, test_result=None, loss=None, state=None, args=None):
     """Output the evaluation results with tab-separated format for easy Excel pasting."""
     file_path = './result/evaluation_results.txt'
     with open(file_path, 'a') as f:
@@ -98,9 +98,10 @@ def print_results(valid_result=None, test_result=None, loss=None, state=None):
 
             time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             output = (
-                f"[Valid] {time}\n"
-                f"Pr:\t{valid_precision}\n"
-                f"Re:\t{valid_recall}\n"
+                f"[Valid] {time} \n"
+                f"{args}\n"
+                f"Prec:\t{valid_precision}\n"
+                f"Reca:\t{valid_recall}\n"
                 f"NDCG:\t{valid_ndcg}\n"
                 f"MRR:\t{valid_mrr}\n"
                 f"########################################################\n"
@@ -116,14 +117,18 @@ def print_results(valid_result=None, test_result=None, loss=None, state=None):
             time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             output = (
                 f"[Test with {state} model] {time}\n"
-                f"Pr:\t{test_precision}\n"
-                f"Re:\t{test_recall}\n"
+                f"{args}\n"
+                f"Prec:\t{test_precision}\n"
+                f"Reca:\t{test_recall}\n"
                 f"NDCG:\t{test_ndcg}\n"
                 f"MRR:\t{test_mrr}\n"
                 f"########################################################\n"
             )
             print(output.strip())
             f.write(output)
+            
+            if state == 'last':
+                f.write('\n')
 
         
 

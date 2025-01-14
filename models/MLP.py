@@ -93,8 +93,8 @@ class MLP(nn.Module):
 
         self.tag_embedding = nn.Sequential(
             nn.Linear(tag_emb_dim, in_dims[0]),
-            # nn.GELU(),
-            # nn.Linear(in_dims[0], in_dims[0])
+            nn.GELU(),
+            nn.Linear(in_dims[0], in_dims[0])
             )
 
         if self.dim_type == "cat":
