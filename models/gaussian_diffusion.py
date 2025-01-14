@@ -12,8 +12,8 @@ import torch.nn.functional as F
 from torch.cuda.amp import autocast
 
 from einops import rearrange, reduce
-
 from tqdm.auto import tqdm
+from modules.evaluate_utils import get_distribution
 
 # gaussian diffusion trainer class
 
@@ -93,7 +93,8 @@ class GaussianDiffusion(nn.Module):
         min_snr_gamma = 5,
         use_cfg_plus_plus = False, # https://arxiv.org/pdf/2406.08070
         num_step = 5,
-        noise_scale = None
+        noise_scale = None,
+        clamp_k = 3
     ):
         super().__init__()
         if model.channels != None:
@@ -104,7 +105,7 @@ class GaussianDiffusion(nn.Module):
         self.channels = self.model.channels
 
         self.x_size = x_size
-
+        self.clamp_k = clamp_k
         self.objective = objective
 
         assert objective in {'pred_noise', 'pred_x0', 'pred_v'}, 'objective must be either pred_noise (predict noise) or pred_x0 (predict image start) or pred_v (predict v [v-parameterization as defined in appendix D of progressive distillation paper, used in imagen-video successfully])'
@@ -286,6 +287,13 @@ class GaussianDiffusion(nn.Module):
 
         for t in reversed(range(0, self.num_timesteps)):
             img, x_start = self.p_sample(img, t, classes)
+
+            # clamping denoised result
+            mean, std = get_distribution(img)
+            lower_bound = mean - self.clamp_k * std
+            upper_bound = mean + self.clamp_k * std
+            img = torch.clamp(img, lower_bound, upper_bound)
+
             imgs.append(img)
 
         ret = img if not return_all_timesteps else torch.stack(imgs, dim=1)
@@ -377,6 +385,11 @@ class GaussianDiffusion(nn.Module):
             target = noise
         elif self.objective == 'pred_x0':
             target = x_start
+            # clamping denoised result
+            mean, std = get_distribution(model_out)
+            lower_bound = mean - self.clamp_k * std
+            upper_bound = mean + self.clamp_k * std
+            model_out = torch.clamp(model_out, lower_bound, upper_bound)
         elif self.objective == 'pred_v':
             v = self.predict_v(x_start, t, noise)
             target = v
@@ -387,7 +400,7 @@ class GaussianDiffusion(nn.Module):
         loss = reduce(loss, 'b ... -> b', 'mean')
 
         loss = loss * extract(self.loss_weight, t, loss.shape)
-        return loss.mean()
+        return loss.mean()  # 평균 loss = 전체 loss / batch_size
 
 
     def forward(self, img, *args, **kwargs):

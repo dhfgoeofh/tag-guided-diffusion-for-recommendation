@@ -27,12 +27,12 @@ class DataLoaderBuilder:
 
         return train_items, valid_items, test_items, train_tags, valid_tags, test_tags
     
-    def load_vt_data(self, is_sample = True):
+    def load_vt_data(self, is_cold = True):
         item_embeddings = np.load(self.emb_path).astype(np.float32)
         tag_embeddings = np.load(self.tag_emb_path).astype(np.float32)
 
         zero_rows = np.all(item_embeddings == 0, axis=1)
-        if is_sample:
+        if is_cold:
             item_embeddings = item_embeddings[zero_rows]
             tag_embeddings = tag_embeddings[zero_rows]
         else:

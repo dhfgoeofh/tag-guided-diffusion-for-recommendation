@@ -109,7 +109,7 @@ if __name__ == '__main__':
         test_rows = pd.read_csv('./data/ML25M/BPR_cv/cold_movies_test_0.tsv', sep='\t')['mid'].tolist()
         
         # items_bpr : train, val, test of BPR model(non-zero)
-        items_bpr, _, zero_idxs = data_loader_builder.load_vt_data(is_sample=False)
+        items_bpr, _, zero_idxs = data_loader_builder.load_vt_data(is_cold=False)
         items_sampled = trainer.sample_item_emb(dataloader)
         items_all = items_orgin.copy()
         
@@ -118,12 +118,20 @@ if __name__ == '__main__':
         ### get average embeddings size ###
         bpr_norms = np.linalg.norm(items_bpr, axis=1)
         average_bpr_norm = np.mean(bpr_norms)
+        bpr_mean, bpr_std = evaluate_utils.get_distribution(items_bpr)
 
         sample_norms = np.linalg.norm(items_sampled, axis=1)    
         average_sample_norm = np.mean(sample_norms)
+        sample_mean, sample_std = evaluate_utils.get_distribution(items_sampled)
 
         print(f'Avg CF(ground truth) Norm: {average_bpr_norm}')
         print(f'Avg Sampled Norm: {average_sample_norm}')
+        print('#'*20)
+        print(f'Mean of each feature orginal ICF: {bpr_mean}')
+        print(f'Std of each feature orginal ICF: {bpr_std}')
+        print('#'*20)
+        print(f'Mean of each feature Sampled ICF: {sample_mean}')
+        print(f'Std of each feature Sampled ICF: {sample_std}')
 
         # ### sample scaling ###
         # sampled_norms = np.linalg.norm(items_sampled, axis=1)

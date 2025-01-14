@@ -128,7 +128,7 @@ def print_results(valid_result=None, test_result=None, loss=None, state=None, ar
             f.write(output)
             
             if state == 'last':
-                f.write('\n')
+                f.write(' \n')
 
         
 
@@ -140,3 +140,11 @@ def get_ground_truth(path):
     gt_list = mid_group.values.tolist()
 
     return gt_list
+
+
+def get_distribution(data, text=None):
+    mean = data.mean(axis=0)
+    std = data.std(axis=0)
+    if text != None:
+        print(f"{text} - Mean: {mean:.4f}, Std: {std:.4f}")
+    return mean, std

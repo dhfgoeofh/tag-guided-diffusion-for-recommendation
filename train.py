@@ -43,6 +43,7 @@ if __name__ == '__main__':
 
     # Load data and prepare DataLoader
     data_loader_builder = DataLoaderBuilder(args.emb_path, args.tag_emb_path, args.batch_size)
+    # remove cold item and split dataset(ICF emb, tag emb) to train, valid and test
     train_items, valid_items, test_items, train_tags, valid_tags, test_tags = data_loader_builder.load_data()
     train_loader, valid_loader, test_loader = data_loader_builder.prepare_dataloaders(
                                                                                       train_items, valid_items, test_items, 
@@ -62,7 +63,8 @@ if __name__ == '__main__':
                                   x_size = eval(args.in_dims)[0],
                                   timesteps = args.timesteps,
                                   objective=args.objective,
-                                  beta_schedule=args.noise_schedule
+                                  beta_schedule=args.noise_schedule,
+                                  clamp_k=args.clamp_k
                                   ).cuda()
 
     if args.optimizer == 'Adagrad':

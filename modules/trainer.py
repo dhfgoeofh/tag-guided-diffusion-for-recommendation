@@ -78,7 +78,7 @@ class Trainer:
         #print(f"Epoch {epoch+1}/{self.epochs}, Training Loss: {avg_train_loss}, Validation Loss: {avg_valid_loss}")
 
     def validate(self, valid_loader):
-        self.model.eval()
+        self.model.train()
         total_valid_loss = 0
 
         with torch.no_grad():
