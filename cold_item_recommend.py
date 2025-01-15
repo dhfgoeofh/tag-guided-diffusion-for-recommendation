@@ -126,12 +126,12 @@ if __name__ == '__main__':
 
         print(f'Avg CF(ground truth) Norm: {average_bpr_norm}')
         print(f'Avg Sampled Norm: {average_sample_norm}')
-        print('#'*20)
-        print(f'Mean of each feature orginal ICF: {bpr_mean}')
-        print(f'Std of each feature orginal ICF: {bpr_std}')
-        print('#'*20)
-        print(f'Mean of each feature Sampled ICF: {sample_mean}')
-        print(f'Std of each feature Sampled ICF: {sample_std}')
+        # print('#'*20)
+        # print(f'Mean of each feature orginal ICF: {bpr_mean}')
+        # print(f'Std of each feature orginal ICF: {bpr_std}')
+        # print('#'*20)
+        # print(f'Mean of each feature Sampled ICF: {sample_mean}')
+        # print(f'Std of each feature Sampled ICF: {sample_std}')
 
         # ### sample scaling ###
         # sampled_norms = np.linalg.norm(items_sampled, axis=1)
