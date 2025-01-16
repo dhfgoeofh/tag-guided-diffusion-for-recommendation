@@ -94,7 +94,8 @@ class GaussianDiffusion(nn.Module):
         use_cfg_plus_plus = False, # https://arxiv.org/pdf/2406.08070
         num_step = 5,
         noise_scale = None,
-        clamp_k = 3
+        lower_bound = None,
+        upper_bound = None
     ):
         super().__init__()
         if model.channels != None:
@@ -105,8 +106,9 @@ class GaussianDiffusion(nn.Module):
         self.channels = self.model.channels
 
         self.x_size = x_size
-        self.clamp_k = clamp_k
         self.objective = objective
+        self.lower_bound = lower_bound
+        self.upper_bound = upper_bound
 
         assert objective in {'pred_noise', 'pred_x0', 'pred_v'}, 'objective must be either pred_noise (predict noise) or pred_x0 (predict image start) or pred_v (predict v [v-parameterization as defined in appendix D of progressive distillation paper, used in imagen-video successfully])'
 
@@ -259,8 +261,8 @@ class GaussianDiffusion(nn.Module):
         preds = self.model_predictions(x, t, classes)
         x_start = preds.pred_x_start
 
-        if clip_denoised:
-            x_start.clamp_(-1., 1.)
+        # if clip_denoised:
+        #     x_start.clamp_(-1., 1.)
 
         model_mean, posterior_variance, posterior_log_variance = self.q_posterior(x_start = x_start, x_t = x, t = t)
         return model_mean, posterior_variance, posterior_log_variance, x_start
@@ -288,11 +290,9 @@ class GaussianDiffusion(nn.Module):
         for t in reversed(range(0, self.num_timesteps)):
             img, x_start = self.p_sample(img, t, classes)
 
-            # clamping denoised result
-            mean, std = get_distribution(img)
-            lower_bound = mean - self.clamp_k * std
-            upper_bound = mean + self.clamp_k * std
-            img = torch.clamp(img, lower_bound, upper_bound)
+            if exists(self.lower_bound) and exists(self.upper_bound):
+                # clamping denoised result
+                img = torch.clamp(img, self.lower_bound, self.upper_bound)
 
             imgs.append(img)
 
@@ -385,11 +385,9 @@ class GaussianDiffusion(nn.Module):
             target = noise
         elif self.objective == 'pred_x0':
             target = x_start
-            # clamping denoised result
-            mean, std = get_distribution(model_out)
-            lower_bound = mean - self.clamp_k * std
-            upper_bound = mean + self.clamp_k * std
-            model_out = torch.clamp(model_out, lower_bound, upper_bound)
+            if exists(self.lower_bound) and exists(self.upper_bound): 
+                # clamping denoised result
+                model_out = torch.clamp(model_out, self.lower_bound, self.upper_bound)
         elif self.objective == 'pred_v':
             v = self.predict_v(x_start, t, noise)
             target = v

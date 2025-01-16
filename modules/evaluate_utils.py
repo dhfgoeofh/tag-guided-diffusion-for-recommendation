@@ -4,6 +4,9 @@ import bottleneck as bn
 import torch
 import math
 from datetime import datetime
+from sklearn.manifold import TSNE
+import matplotlib.pyplot as plt
+from scipy.stats import gaussian_kde
 
 def recommend(user_embeddings, item_embeddings, max_k):
     """
@@ -148,3 +151,86 @@ def get_distribution(data, text=None):
     if text != None:
         print(f"{text} - Mean: {mean:.4f}, Std: {std:.4f}")
     return mean, std
+
+
+def visualize_distribution(items_bpr, items_sampled, count=None, method='scatter'):
+    """
+    t-SNE를 사용하여 items_bpr와 items_sampled의 분포를 시각화.
+
+    Parameters:
+        items_bpr (numpy.ndarray): BPR 아이템 임베딩
+        items_sampled (numpy.ndarray): 샘플링된 아이템 임베딩
+        count (int): 샘플링할 데이터 수 (None이면 전체 사용)
+        method (str): 'scatter' 또는 'heatmap'으로 시각화 방법 선택
+    """
+    num_bpr = len(items_bpr)
+    num_sampled = len(items_sampled)
+    if count is not None and count > 0:
+        # 데이터 샘플링 (큰 데이터셋의 계산 효율을 위해)
+        num_bpr = min(count, len(items_bpr))
+        num_sampled = min(count, len(items_sampled))
+
+    bpr_sample = items_bpr[np.random.choice(len(items_bpr), num_bpr, replace=False)]
+    sampled_sample = items_sampled[np.random.choice(len(items_sampled), num_sampled, replace=False)]
+
+    # t-SNE를 사용하여 2D로 차원 축소
+    all_data = np.vstack([bpr_sample, sampled_sample])
+    tsne = TSNE(n_components=2, random_state=1, perplexity=30, n_iter=300)
+    reduced_data = tsne.fit_transform(all_data)
+
+    # 분리
+    total_bpr_sample = len(bpr_sample)
+    bpr_tsne = reduced_data[:total_bpr_sample]
+    sampled_tsne = reduced_data[total_bpr_sample:]
+    
+    # x축과 y축의 범위 설정
+    x_min = min(bpr_tsne[:, 0].min(), sampled_tsne[:, 0].min())
+    x_max = max(bpr_tsne[:, 0].max(), sampled_tsne[:, 0].max())
+    y_min = min(bpr_tsne[:, 1].min(), sampled_tsne[:, 1].min())
+    y_max = max(bpr_tsne[:, 1].max(), sampled_tsne[:, 1].max())
+
+    if method == 'scatter':
+        # 산점도 방식
+        plt.figure(figsize=(8, 8))
+        plt.scatter(bpr_tsne[:, 0], bpr_tsne[:, 1], label='BPR Items', alpha=0.6, s=15, c='blue')
+        plt.scatter(sampled_tsne[:, 0], sampled_tsne[:, 1], label='Sampled Items', alpha=0.6, s=15, c='orange')
+        plt.title("t-SNE Scatter Visualization of BPR and Sampled Items")
+        plt.xlabel("t-SNE Dimension 1")
+        plt.ylabel("t-SNE Dimension 2")
+        plt.xlim(x_min, x_max)
+        plt.ylim(y_min, y_max)
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
+    elif method == 'heatmap':
+        # 원형 히트맵 방식
+        plt.figure(figsize=(12, 6))
+
+        # BPR Items 원형 히트맵
+        plt.subplot(1, 2, 1)
+        bpr_density = gaussian_kde(bpr_tsne.T)(bpr_tsne.T)
+        plt.scatter(bpr_tsne[:, 0], bpr_tsne[:, 1], c=bpr_density, cmap='Blues', s=20, alpha=0.7)
+        plt.colorbar(label="Density")
+        plt.title("Circular Heatmap of BPR Items")
+        plt.xlabel("t-SNE Dimension 1")
+        plt.ylabel("t-SNE Dimension 2")
+        plt.xlim(x_min, x_max)
+        plt.ylim(y_min, y_max)
+
+        # Sampled Items 원형 히트맵
+        plt.subplot(1, 2, 2)
+        sampled_density = gaussian_kde(sampled_tsne.T)(sampled_tsne.T)
+        plt.scatter(sampled_tsne[:, 0], sampled_tsne[:, 1], c=sampled_density, cmap='Oranges', s=20, alpha=0.7)
+        plt.colorbar(label="Density")
+        plt.title("Circular Heatmap of Sampled Items")
+        plt.xlabel("t-SNE Dimension 1")
+        plt.ylabel("t-SNE Dimension 2")
+        plt.xlim(x_min, x_max)
+        plt.ylim(y_min, y_max)
+
+        plt.tight_layout()
+        plt.show()
+
+    else:
+        raise ValueError("Invalid method. Choose 'scatter' or 'heatmap'.")

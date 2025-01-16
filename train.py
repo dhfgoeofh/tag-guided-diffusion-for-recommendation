@@ -20,7 +20,7 @@ from models.MLP import MLP
 from modules.dataloader import DataLoaderBuilder
 # from modules.trainer_batch_wise import Trainer
 from modules.trainer import Trainer
-
+from modules.evaluate_utils import get_distribution
 from tqdm import tqdm
 
 import random
@@ -49,6 +49,11 @@ if __name__ == '__main__':
                                                                                       train_items, valid_items, test_items, 
                                                                                       train_tags, valid_tags, test_tags
                                                                                       )
+    # bound for data clipping
+    mean, std = get_distribution(train_items)
+    lower_bound = torch.tensor(mean - args.clamp_k * std, dtype=torch.float32).cuda()
+    upper_bound = torch.tensor(mean + args.clamp_k * std, dtype=torch.float32).cuda()
+
     ### model ###
     model = MLP(
                 in_dims=eval(args.in_dims),
@@ -64,7 +69,8 @@ if __name__ == '__main__':
                                   timesteps = args.timesteps,
                                   objective=args.objective,
                                   beta_schedule=args.noise_schedule,
-                                  clamp_k=args.clamp_k
+                                  lower_bound=lower_bound,
+                                  upper_bound=upper_bound
                                   ).cuda()
 
     if args.optimizer == 'Adagrad':

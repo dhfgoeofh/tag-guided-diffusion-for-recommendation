@@ -24,7 +24,7 @@ def parse_args():
 
     # MLP parameters
     parser.add_argument('--dropout', type=float, default=0.5, help='dropout rate of MLP layer')
-    parser.add_argument('--in_dims', type=str, default='[128, 256, 256, 128]', help='the dims for item embedding')
+    parser.add_argument('--in_dims', type=str, default='[128, 64, 128]', help='the dims for item embedding')
     parser.add_argument('--tag_emb_dim', type=int, default=400, help='the dims for tag embedding')
     parser.add_argument('--time_emb_dim', type=int, default=10, help='timestep embedding size')
     parser.add_argument('--mlp_act_func', type=str, default='tanh', help='the activation function for MLP')
@@ -35,6 +35,7 @@ def parse_args():
     parser.add_argument('--objective', type=str, default='pred_x0', help='objective type: pred_noise, pred_x0, pred_v')
     parser.add_argument('--timesteps', type=int, default=1000, help='diffusion steps') 
     parser.add_argument('--noise_schedule', type=str, default='cosine', help='the schedule for noise generating')
-    parser.add_argument('--clamp_k', type=int, default=3, help='lower and upper bound for clamping distribution, if k=2, 0.9544 if k=3 0.9973')     
+    # clamp_k | None | 1 | 2 | 3 |...
+    parser.add_argument('--clamp_k', type=int, default=2, help='lower and upper bound for clamping distribution, if k=2, 0.9544 if k=3 0.9973')     
 
     return parser.parse_args()
