@@ -152,7 +152,7 @@ class MLP(nn.Module):
             x = F.normalize(x)
 
         x = self.input_dropout(x)
-        tag_emb = self.input_dropout(tag_emb)
+        # tag_emb = self.input_dropout(tag_emb)
 
         h = torch.cat([x, time_emb, tag_emb], dim=-1)
         return self.mlp(h)
