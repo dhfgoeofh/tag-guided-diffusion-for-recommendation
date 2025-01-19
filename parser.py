@@ -17,14 +17,14 @@ def parse_args():
     parser.add_argument('--lr', type=float, default=0.0001, help='learning rate for MLP')
     parser.add_argument('--wd', type=float, default=1e-4, help='weight decay for MLP')
     parser.add_argument('--batch_size', type=int, default=400)
-    parser.add_argument('--epochs', type=int, default=50000, help='upper epoch limit')
+    parser.add_argument('--epochs', type=int, default=40000, help='upper epoch limit')
     parser.add_argument('--cuda', action='store_true', help='use CUDA')
     parser.add_argument('--gpu', type=str, default='0', help='gpu card ID')
     parser.add_argument('--save_path', type=str, default='./saved_models/', help='save model path')
 
     # MLP parameters
     parser.add_argument('--dropout', type=float, default=0.5, help='dropout rate of MLP layer')
-    parser.add_argument('--in_dims', type=str, default='[128, 64, 64, 128]', help='the dims for item embedding')
+    parser.add_argument('--in_dims', type=str, default='[128, 64, 128]', help='the dims for item embedding')
     parser.add_argument('--tag_emb_dim', type=int, default=400, help='the dims for tag embedding')
     parser.add_argument('--time_emb_dim', type=int, default=10, help='timestep embedding size')
     parser.add_argument('--mlp_act_func', type=str, default='tanh', help='the activation function for MLP')
