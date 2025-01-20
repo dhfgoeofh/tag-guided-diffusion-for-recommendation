@@ -433,7 +433,7 @@ class Unet(Module):
         return self.final_conv(x)
 
 # Modifying
-class MLP(Moudle):
+class MLP(Module):
     """
     MLP for the reverse diffuision process
     """

@@ -235,13 +235,13 @@ class ResidualMLP(nn.Module):
         )
 
         # Adjust input size if concatenating embeddings
-        self.in_dims[0] = self.in_dims[0]*2 + self.time_emb_dim
+        self.in_dims[0] = self.in_dims[0] *2 + self.time_emb_dim
 
         # Define layers dynamically with residual connections
-        self.layers = nn.ModuleList([
-            ResidualBlock(self.in_dims[i], self.in_dims[i + 1], act_func, dropout)
-            for i in range(self.num_layers)
-        ])
+        self.layers = nn.ModuleList(
+                                    [ResidualBlock(self.in_dims[i], self.in_dims[i + 1], act_func, dropout) for i in range(self.num_layers - 1)]
+                                    )
+        self.layers.append(nn.Linear(self.in_dims[-2], self.in_dims[-1]))
 
         self.input_dropout = nn.Dropout(self.dropout)
         self.init_weights()

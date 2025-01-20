@@ -7,6 +7,7 @@ from datetime import datetime
 from sklearn.manifold import TSNE
 import matplotlib.pyplot as plt
 from scipy.stats import gaussian_kde
+from mpl_toolkits.mplot3d import Axes3D
 
 def recommend(user_embeddings, item_embeddings, max_k):
     """
@@ -155,42 +156,42 @@ def get_distribution(data, text=None):
 
 def visualize_distribution(items_bpr, items_sampled, count=None, method='scatter'):
     """
-    t-SNE를 사용하여 items_bpr와 items_sampled의 분포를 시각화.
+    t-SNE를 사용하여 items_bpr와 items_sampled의 분포를 시각화 (2D 또는 3D).
 
     Parameters:
         items_bpr (numpy.ndarray): BPR 아이템 임베딩
         items_sampled (numpy.ndarray): 샘플링된 아이템 임베딩
         count (int): 샘플링할 데이터 수 (None이면 전체 사용)
-        method (str): 'scatter' 또는 'heatmap'으로 시각화 방법 선택
+        method (str): 'scatter', 'heatmap', '3d'로 시각화 방법 선택
     """
     num_bpr = len(items_bpr)
     num_sampled = len(items_sampled)
     if count is not None and count > 0:
-        # 데이터 샘플링 (큰 데이터셋의 계산 효율을 위해)
+        # 데이터 샘플링
         num_bpr = min(count, len(items_bpr))
         num_sampled = min(count, len(items_sampled))
 
     bpr_sample = items_bpr[np.random.choice(len(items_bpr), num_bpr, replace=False)]
     sampled_sample = items_sampled[np.random.choice(len(items_sampled), num_sampled, replace=False)]
 
-    # t-SNE를 사용하여 2D로 차원 축소
+    # t-SNE를 사용하여 차원 축소
+    n_components = 3 if method == '3d' else 2
     all_data = np.vstack([bpr_sample, sampled_sample])
-    tsne = TSNE(n_components=2, random_state=1, perplexity=30, n_iter=300)
+    tsne = TSNE(n_components=n_components, random_state=1, perplexity=30, n_iter=300)
     reduced_data = tsne.fit_transform(all_data)
 
     # 분리
     total_bpr_sample = len(bpr_sample)
     bpr_tsne = reduced_data[:total_bpr_sample]
     sampled_tsne = reduced_data[total_bpr_sample:]
-    
-    # x축과 y축의 범위 설정
-    x_min = min(bpr_tsne[:, 0].min(), sampled_tsne[:, 0].min())
-    x_max = max(bpr_tsne[:, 0].max(), sampled_tsne[:, 0].max())
-    y_min = min(bpr_tsne[:, 1].min(), sampled_tsne[:, 1].min())
-    y_max = max(bpr_tsne[:, 1].max(), sampled_tsne[:, 1].max())
 
     if method == 'scatter':
-        # 산점도 방식
+        # 2D 산점도 방식
+        x_min = min(bpr_tsne[:, 0].min(), sampled_tsne[:, 0].min())
+        x_max = max(bpr_tsne[:, 0].max(), sampled_tsne[:, 0].max())
+        y_min = min(bpr_tsne[:, 1].min(), sampled_tsne[:, 1].min())
+        y_max = max(bpr_tsne[:, 1].max(), sampled_tsne[:, 1].max())
+
         plt.figure(figsize=(8, 8))
         plt.scatter(bpr_tsne[:, 0], bpr_tsne[:, 1], label='BPR Items', alpha=0.6, s=15, c='blue')
         plt.scatter(sampled_tsne[:, 0], sampled_tsne[:, 1], label='Sampled Items', alpha=0.6, s=15, c='orange')
@@ -204,7 +205,12 @@ def visualize_distribution(items_bpr, items_sampled, count=None, method='scatter
         plt.show()
 
     elif method == 'heatmap':
-        # 원형 히트맵 방식
+        # 2D 원형 히트맵 방식
+        x_min = min(bpr_tsne[:, 0].min(), sampled_tsne[:, 0].min())
+        x_max = max(bpr_tsne[:, 0].max(), sampled_tsne[:, 0].max())
+        y_min = min(bpr_tsne[:, 1].min(), sampled_tsne[:, 1].min())
+        y_max = max(bpr_tsne[:, 1].max(), sampled_tsne[:, 1].max())
+
         plt.figure(figsize=(12, 6))
 
         # BPR Items 원형 히트맵
@@ -232,5 +238,22 @@ def visualize_distribution(items_bpr, items_sampled, count=None, method='scatter
         plt.tight_layout()
         plt.show()
 
+    elif method == '3d':
+        # 3D 산점도 방식
+        fig = plt.figure(figsize=(10, 8))
+        ax = fig.add_subplot(111, projection='3d')
+
+        ax.scatter(bpr_tsne[:, 0], bpr_tsne[:, 1], bpr_tsne[:, 2], 
+                   label='BPR Items', alpha=0.6, s=2, c='blue')
+        ax.scatter(sampled_tsne[:, 0], sampled_tsne[:, 1], sampled_tsne[:, 2], 
+                   label='Sampled Items', alpha=0.6, s=2, c='orange')
+
+        ax.set_title("t-SNE 3D Visualization of BPR and Sampled Items")
+        ax.set_xlabel("t-SNE Dimension 1")
+        ax.set_ylabel("t-SNE Dimension 2")
+        ax.set_zlabel("t-SNE Dimension 3")
+        ax.legend()
+        plt.show()
+
     else:
-        raise ValueError("Invalid method. Choose 'scatter' or 'heatmap'.")
+        raise ValueError("Invalid method. Choose 'scatter', 'heatmap', or '3d'.")
