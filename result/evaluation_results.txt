@@ -571,3 +571,18 @@ NDCG:	0.353858	0.331915	0.32721	0.335611	0.359404	0.405434
 MRR:	0.545777	0.557248	0.561349	0.562496	0.563338	0.563894
 ########################################################
  
+[Test with best model] 2025-01-20 10:12:01
+Namespace(topN='[5, 10, 20, 30, 50, 100]', gt_path='./data/ML25M/BPR_cv/cold_movies_rating_all_0.tsv', emb_path='./data/ML25M/BPR_cv/BPR_ivec_0.npy', user_path='./data/ML25M/BPR_cv/BPR_uvec_0.npy', tag_emb_path='./data/ML25M/mv-tag-emb.npy', num_t_samples=1, lr=0.0001, wd=0.0001, batch_size=400, epochs=30000, cuda=False, gpu='0', save_path='./saved_models/', dropout=0.5, in_dims='[128, 128, 128]', tag_emb_dim=400, time_emb_dim=10, mlp_act_func='tanh', optimizer='AdamW', noise_scale=0.005, objective='pred_x0', timesteps=1000, noise_schedule='linear', clamp_k=3)
+Prec:	0.315148	0.275376	0.226798	0.196948	0.160863	0.115058
+Reca:	0.103033	0.169996	0.258188	0.321137	0.416027	0.570915
+NDCG:	0.33542	0.32184	0.320917	0.32952	0.352663	0.400528
+MRR:	0.509569	0.522249	0.526278	0.527261	0.52799	0.528592
+########################################################
+[Test with last model] 2025-01-20 10:13:02
+Namespace(topN='[5, 10, 20, 30, 50, 100]', gt_path='./data/ML25M/BPR_cv/cold_movies_rating_all_0.tsv', emb_path='./data/ML25M/BPR_cv/BPR_ivec_0.npy', user_path='./data/ML25M/BPR_cv/BPR_uvec_0.npy', tag_emb_path='./data/ML25M/mv-tag-emb.npy', num_t_samples=1, lr=0.0001, wd=0.0001, batch_size=400, epochs=30000, cuda=False, gpu='0', save_path='./saved_models/', dropout=0.5, in_dims='[128, 128, 128]', tag_emb_dim=400, time_emb_dim=10, mlp_act_func='tanh', optimizer='AdamW', noise_scale=0.005, objective='pred_x0', timesteps=1000, noise_schedule='linear', clamp_k=3)
+Prec:	0.300092	0.270504	0.225304	0.196314	0.159557	0.114002
+Reca:	0.097789	0.167023	0.257623	0.320945	0.413956	0.566088
+NDCG:	0.318652	0.312023	0.314317	0.323794	0.346275	0.393453
+MRR:	0.490555	0.504983	0.509304	0.510267	0.51101	0.511617
+########################################################
+ 

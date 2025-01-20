@@ -40,6 +40,35 @@ class RandomOrLearnedSinusoidalPosEmb(nn.Module):
         fouriered = torch.cat((freqs.sin(), freqs.cos()), dim = -1)
         fouriered = torch.cat((x, fouriered), dim = -1)
         return fouriered
+    
+class ResidualBlock(nn.Module):
+    def __init__(self, input_dim, output_dim, act_func, dropout):
+        super().__init__()
+        self.layer = nn.Sequential(
+            nn.Linear(input_dim, output_dim),
+            self._get_activation(act_func),
+            nn.Dropout(dropout)
+        )
+        self.residual_connection = input_dim == output_dim
+
+    def _get_activation(self, act_func):
+        if act_func == 'tanh':
+            return nn.Tanh()
+        elif act_func == 'relu':
+            return nn.ReLU()
+        elif act_func == 'sigmoid':
+            return nn.Sigmoid()
+        elif act_func == 'leaky_relu':
+            return nn.LeakyReLU()
+        else:
+            raise ValueError(f"Unsupported activation function: {act_func}")
+
+    def forward(self, x):
+        if self.residual_connection:
+            return x + self.layer(x)
+        return self.layer(x)
+
+
 
 class MLP(nn.Module):
     """
@@ -156,3 +185,99 @@ class MLP(nn.Module):
 
         h = torch.cat([x, time_emb, tag_emb], dim=-1)
         return self.mlp(h)
+    
+
+# Residual MLP
+class ResidualMLP(nn.Module):
+    def __init__(
+        self,
+        in_dims,
+        time_emb_dim,
+        tag_emb_dim,
+        channels=None,
+        act_func='tanh',
+        learned_sinusoidal_cond=False,
+        learned_sinusoidal_dim=8,
+        random_fourier_features=False,
+        norm=False,
+        dropout=0.5,
+    ):
+        super().__init__()
+
+        self.in_dims = in_dims  # List of dimensions for each layer
+        self.time_emb_dim = time_emb_dim
+        self.tag_emb_dim = tag_emb_dim
+        self.norm = norm
+        self.dropout = dropout
+        self.num_layers = len(self.in_dims) - 1
+        self.channels = channels
+
+        # Positional embeddings
+        self.random_or_learned_sinusoidal_cond = learned_sinusoidal_cond or random_fourier_features
+        if self.random_or_learned_sinusoidal_cond:
+            sinu_pos_emb = RandomOrLearnedSinusoidalPosEmb(learned_sinusoidal_dim, random_fourier_features)
+            fourier_dim = learned_sinusoidal_dim + 1
+        else:
+            sinu_pos_emb = SinusoidalPosEmb(in_dims[0])
+            fourier_dim = in_dims[0]
+
+        self.time_embedding = nn.Sequential(
+            sinu_pos_emb,
+            nn.Linear(fourier_dim, time_emb_dim),
+            nn.GELU(),
+            nn.Linear(time_emb_dim, time_emb_dim)
+        )
+
+        self.tag_embedding = nn.Sequential(
+            nn.Linear(tag_emb_dim, in_dims[0]),
+            nn.GELU(),
+            nn.Linear(in_dims[0], in_dims[0])
+        )
+
+        # Adjust input size if concatenating embeddings
+        self.in_dims[0] = self.in_dims[0]*2 + self.time_emb_dim
+
+        # Define layers dynamically with residual connections
+        self.layers = nn.ModuleList([
+            ResidualBlock(self.in_dims[i], self.in_dims[i + 1], act_func, dropout)
+            for i in range(self.num_layers)
+        ])
+
+        self.input_dropout = nn.Dropout(self.dropout)
+        self.init_weights()
+
+    def init_weights(self):
+        def initialize_layer(layer):
+            if isinstance(layer, nn.Linear):
+                fan_in, fan_out = layer.weight.size(1), layer.weight.size(0)
+                std = np.sqrt(2.0 / (fan_in + fan_out))
+                layer.weight.data.normal_(0.0, std)
+                layer.bias.data.normal_(0.0, 0.001)
+
+        for layer in self.time_embedding:
+            initialize_layer(layer)
+
+        for layer in self.tag_embedding:
+            initialize_layer(layer)
+
+        for layer in self.layers:
+            if isinstance(layer, ResidualBlock):
+                for sublayer in layer.layer:
+                    if isinstance(sublayer, nn.Linear):
+                        initialize_layer(sublayer)
+
+    def forward(self, x, timesteps, tag):
+        time_emb = self.time_embedding(timesteps).to(x.device)
+        tag_emb = self.tag_embedding(tag).to(x.device)
+
+        if self.norm:
+            x = F.normalize(x, dim=-1)
+
+        x = self.input_dropout(x)
+        # tag_emb = self.input_dropout(tag_emb)
+        h = torch.cat([x, time_emb, tag_emb], dim=-1)
+
+        for layer in self.layers:
+            h = layer(h)
+
+        return h

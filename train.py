@@ -16,7 +16,7 @@ import torch.nn.functional as F
 import scipy.sparse as sp
 
 from models.gaussian_diffusion import GaussianDiffusion
-from models.MLP import MLP
+from models.MLP import MLP, ResidualMLP
 from modules.dataloader import DataLoaderBuilder
 # from modules.trainer_batch_wise import Trainer
 from modules.trainer import Trainer
@@ -51,17 +51,29 @@ if __name__ == '__main__':
                                                                                       )
     # bound for data clipping
     mean, std = get_distribution(train_items)
-    lower_bound = torch.tensor(mean - args.clamp_k * std, dtype=torch.float32).cuda()
-    upper_bound = torch.tensor(mean + args.clamp_k * std, dtype=torch.float32).cuda()
+    lower_bound = None
+    upper_bound = None
+    if args.clamp_k != None:
+        lower_bound = torch.tensor(mean - args.clamp_k * std, dtype=torch.float32).cuda()
+        upper_bound = torch.tensor(mean + args.clamp_k * std, dtype=torch.float32).cuda()
 
     ### model ###
-    model = MLP(
-                in_dims=eval(args.in_dims),
-                time_emb_dim=args.time_emb_dim,
-                tag_emb_dim=args.tag_emb_dim,
-                act_func=args.mlp_act_func,
-                dropout=args.dropout
-                ).cuda()
+    if args.model == 'MLP':
+        model = MLP(
+                    in_dims=eval(args.in_dims),
+                    time_emb_dim=args.time_emb_dim,
+                    tag_emb_dim=args.tag_emb_dim,
+                    act_func=args.mlp_act_func,
+                    dropout=args.dropout
+                    ).cuda()
+    elif args.model == 'ResidualMLP':
+        model = ResidualMLP(
+                            in_dims=eval(args.in_dims),
+                            time_emb_dim=args.time_emb_dim,
+                            tag_emb_dim=args.tag_emb_dim,
+                            act_func=args.mlp_act_func,
+                            dropout=args.dropout
+                            ).cuda()
     
     diffusion = GaussianDiffusion(
                                   model,

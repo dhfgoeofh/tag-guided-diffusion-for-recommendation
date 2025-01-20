@@ -17,12 +17,13 @@ def parse_args():
     parser.add_argument('--lr', type=float, default=0.0001, help='learning rate for MLP')
     parser.add_argument('--wd', type=float, default=1e-4, help='weight decay for MLP')
     parser.add_argument('--batch_size', type=int, default=400)
-    parser.add_argument('--epochs', type=int, default=40000, help='upper epoch limit')
+    parser.add_argument('--epochs', type=int, default=30000, help='upper epoch limit')
     parser.add_argument('--cuda', action='store_true', help='use CUDA')
     parser.add_argument('--gpu', type=str, default='0', help='gpu card ID')
     parser.add_argument('--save_path', type=str, default='./saved_models/', help='save model path')
 
     # MLP parameters
+    parser.add_argument('--model', type=str, default='MLP', help='select model(MLP, ResidualMLP, Attention)')
     parser.add_argument('--dropout', type=float, default=0.5, help='dropout rate of MLP layer')
     parser.add_argument('--in_dims', type=str, default='[128, 64, 128]', help='the dims for item embedding')
     parser.add_argument('--tag_emb_dim', type=int, default=400, help='the dims for tag embedding')
@@ -36,6 +37,6 @@ def parse_args():
     parser.add_argument('--timesteps', type=int, default=1000, help='diffusion steps') 
     parser.add_argument('--noise_schedule', type=str, default='linear', help='the schedule for noise generating')
     # clamp_k | None | 1 | 2 | 3 |...
-    parser.add_argument('--clamp_k', type=int, default=3, help='lower and upper bound for clamping distribution, if k=2, 0.9544 if k=3 0.9973')     
+    parser.add_argument('--clamp_k', type=int, default=None, help='lower and upper bound for clamping distribution, if k=2, 0.9544 if k=3 0.9973')     
 
     return parser.parse_args()

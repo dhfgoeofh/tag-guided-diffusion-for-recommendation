@@ -17,7 +17,7 @@ import torch.nn.functional as F
 import scipy.sparse as sp
 
 from models.gaussian_diffusion import GaussianDiffusion
-from models.MLP import MLP
+from models.MLP import MLP, ResidualMLP
 from modules.dataloader import DataLoaderBuilder
 # from modules.trainer_batch_wise import Trainer
 from modules.trainer import Trainer
@@ -61,16 +61,29 @@ if __name__ == '__main__':
     for state in states:
         # Load data and prepare DataLoader
         data_loader_builder = DataLoaderBuilder(args.emb_path, args.tag_emb_path, args.batch_size)
-        items, tags, zero_rows = data_loader_builder.load_vt_data()
-        dataloader = data_loader_builder.prepare_dataloaders_vt(items, tags)
+        sample_items, sample_tags, zero_rows = data_loader_builder.load_sample_data()
+        bpr_items, bpr_tags, zero_rows = data_loader_builder.load_sample_data(is_cold=False)
+
+        sample_dataloader = data_loader_builder.prepare_dataloaders_sample(sample_items, sample_tags)
+        bpr_dataloader = data_loader_builder.prepare_dataloaders_sample(bpr_items, bpr_tags)
 
         ### model ###
-        model = MLP(
-                    in_dims=eval(args.in_dims),
-                    time_emb_dim=args.time_emb_dim,
-                    tag_emb_dim=args.tag_emb_dim,
-                    act_func=args.mlp_act_func,
-                    ).cuda()
+        if args.model == 'MLP':
+            model = MLP(
+                        in_dims=eval(args.in_dims),
+                        time_emb_dim=args.time_emb_dim,
+                        tag_emb_dim=args.tag_emb_dim,
+                        act_func=args.mlp_act_func,
+                        dropout=args.dropout
+                        ).cuda()
+        elif args.model == 'ResidualMLP':
+            model = ResidualMLP(
+                                in_dims=eval(args.in_dims),
+                                time_emb_dim=args.time_emb_dim,
+                                tag_emb_dim=args.tag_emb_dim,
+                                act_func=args.mlp_act_func,
+                                dropout=args.dropout
+                                ).cuda()
         
         diffusion = GaussianDiffusion(
                                     model,
@@ -96,7 +109,6 @@ if __name__ == '__main__':
 
         print("models ready.")
 
-
         # Train and validate
         trainer = Trainer(model, diffusion, device, args.num_t_samples, args)
         
@@ -109,8 +121,10 @@ if __name__ == '__main__':
         test_rows = pd.read_csv('./data/ML25M/BPR_cv/cold_movies_test_0.tsv', sep='\t')['mid'].tolist()
         
         # items_bpr : train, val, test of BPR model(non-zero)
-        items_bpr, _, zero_idxs = data_loader_builder.load_vt_data(is_cold=False)
-        items_sampled = trainer.sample_item_emb(dataloader)
+        items_bpr, _, zero_idxs = data_loader_builder.load_sample_data(is_cold=False)
+        items_sampled = trainer.sample_item_emb(sample_dataloader)
+        items_train_sampled = trainer.sample_item_emb(bpr_dataloader) # train dataset (non-zero)
+        
         items_all = items_orgin.copy()
         
         items_all[zero_rows] = items_sampled
@@ -120,13 +134,13 @@ if __name__ == '__main__':
         average_bpr_norm = np.mean(bpr_norms)
         bpr_mean, bpr_std = evaluate_utils.get_distribution(items_bpr)
 
-        sample_norms = np.linalg.norm(items_sampled, axis=1)    
+        sample_norms = np.linalg.norm(items_train_sampled, axis=1)    
         average_sample_norm = np.mean(sample_norms)
-        sample_mean, sample_std = evaluate_utils.get_distribution(items_sampled)
+        sample_mean, sample_std = evaluate_utils.get_distribution(items_train_sampled)
 
         print(f'Avg CF(ground truth) Norm: {average_bpr_norm}')
         print(f'Avg Sampled Norm: {average_sample_norm}')
-        evaluate_utils.visualize_distribution(items_bpr, items_sampled, count=None, method='heatmap')        
+        evaluate_utils.visualize_distribution(items_bpr, items_train_sampled, count=None, method='heatmap')        
         # print('#'*20)
         # print(f'Mean of each feature orginal ICF: {bpr_mean}')
         # print(f'Std of each feature orginal ICF: {bpr_std}')

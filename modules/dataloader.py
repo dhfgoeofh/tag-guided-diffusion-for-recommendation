@@ -27,7 +27,7 @@ class DataLoaderBuilder:
 
         return train_items, valid_items, test_items, train_tags, valid_tags, test_tags
     
-    def load_vt_data(self, is_cold = True):
+    def load_sample_data(self, is_cold = True):
         item_embeddings = np.load(self.emb_path).astype(np.float32)
         tag_embeddings = np.load(self.tag_emb_path).astype(np.float32)
 
@@ -53,7 +53,7 @@ class DataLoaderBuilder:
 
         return train_loader, valid_loader, test_loader
     
-    def prepare_dataloaders_vt(self, items, tags):
+    def prepare_dataloaders_sample(self, items, tags):
         dataset = TensorDataset(torch.tensor(items, dtype=torch.float32), torch.tensor(tags, dtype=torch.float32))
         dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=False)
 
