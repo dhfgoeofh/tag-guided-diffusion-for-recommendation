@@ -164,69 +164,8 @@ if __name__ == '__main__':
         # # Apply the scaled sampled embeddings to the zero rows in items_all
         # items_all[zero_rows] = items_sampled
 
-
-        
         
         max_k = eval(args.topN)[-1]
-
-        # print("#" * 16)
-        # print('Test(BPR)')
-        # print("#" * 16)
-        # users_idx = pd.read_csv('data\ML25M\BPR_cv\BPR_test_0.tsv', sep='\t')['uid'].unique()
-        # users = np.load(args.user_path)[users_idx]
-        
-        # gt_indices = evaluate_utils.get_ground_truth('data\ML25M\BPR_cv\BPR_test_0.tsv')
-
-        # # 상호작용을 안한 유저, 즉 gt가 없는 유저를 제거
-        # if abs(len(users) - len(gt_indices)) > 0:
-        #     ratings = pd.read_csv('data\ML25M\BPR_cv\BPR_test_0.tsv', sep='\t')
-        #     uids = set(ratings['uid'].unique())
-
-        #     null_mask = ~np.isin(np.arange(len(users)), list(uids))
-        #     # remove null users
-        #     users = np.delete(users, np.where(null_mask)[0], axis=0)
-            
-        # # predicted indices
-        # pred_indices, pred_scores = evaluate_utils.recommend(users, items_bpr, max_k)
-
-        # item_idxs = np.where(zero_rows == False)
-        # pred_indices = item_idxs[0][pred_indices]
-    
-        # # precision, recall, NDCG, MRR
-        # pred_result = evaluate_utils.computeTopNAccuracy(gt_indices, pred_indices, eval(args.topN))
-        # evaluate_utils.print_results(pred_result)
-
-
-        # print("#" * 16)
-        # print('Random')
-        # print("#" * 16)
-        # users = np.load(args.user_path)
-        # gt_indices = evaluate_utils.get_ground_truth(args.gt_path)
-
-        # # 상호작용을 안한 유저, 즉 gt가 없는 유저를 제거
-        # if abs(len(users) - len(gt_indices)) > 0:
-        #     ratings = pd.read_csv(args.gt_path, sep='\t')
-        #     uids = set(ratings['uid'].unique())
-
-        #     null_mask = ~np.isin(np.arange(len(users)), list(uids))
-        #     # remove null users
-        #     users = np.delete(users, np.where(null_mask)[0], axis=0)
-
-        # ## predicted indices
-        # # pred_indices, pred_scores = evaluate_utils.recommend(users, items_sampled, max_k)
-        # item_idxs = np.where(zero_rows == True)
-
-        # ## Random prediction
-        # matrix = np.zeros((len(users), max_k), dtype=int)
-        
-        # for i in range((len(users))):
-        #     matrix[i] = np.random.choice(len(item_idxs[0]), size=max_k, replace=False)
-
-        # pred_indices = item_idxs[0][matrix]
-
-        # # precision, recall, NDCG, MRR
-        # pred_result = evaluate_utils.computeTopNAccuracy(gt_indices, pred_indices, eval(args.topN))
-        # evaluate_utils.print_results(pred_result)
 
 
         print("#" * 16)
