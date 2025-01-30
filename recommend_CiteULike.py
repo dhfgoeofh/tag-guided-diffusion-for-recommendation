@@ -2,12 +2,51 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
+import pandas as pd
+from sklearn import datasets, preprocessing as prep
+from scipy.sparse import lil_matrix, coo_matrix
 from tqdm import tqdm
 import argparse
+import time
 
-class HeaterModel(nn.Module):
+# --- Timer for logging ---
+class Timer:
+    def __init__(self, name='default'):
+        self.name = name
+        self.start_time = time.time()
+
+    def tic(self):
+        self.start_time = time.time()
+
+    def toc(self, message=''):
+        elapsed = time.time() - self.start_time
+        print(f"[{self.name}] {message} elapsed: {elapsed:.2f}s")
+
+
+
+# --- Helper functions ---
+def l2_norm(tensor):
+    return torch.sum(tensor ** 2)
+
+def tfidf(x):
+    x_idf = np.log(x.shape[0] - 1) - np.log(1 + np.sum(x > 0, axis=0))
+    x_tf = lil_matrix(x).tolil()
+    x_tf.data = np.log(x_tf.data + 1)
+    x_tfidf = x_tf @ lil_matrix(np.diag(x_idf))
+    return x_tfidf
+
+def standardize(x):
+    scaler = prep.StandardScaler().fit(x)
+    x_scaled = scaler.transform(x)
+    x_scaled = np.clip(x_scaled, -5, 5)
+    return scaler, x_scaled
+
+
+
+# --- Model definition ---
+class Heater(nn.Module):
     def __init__(self, latent_dim, content_dim, output_dim, num_experts=5, random_prob=0.5):
-        super(HeaterModel, self).__init__()
+        super(Heater, self).__init__()
         self.num_experts = num_experts
         self.random_prob = random_prob
 
@@ -44,6 +83,9 @@ class HeaterModel(nn.Module):
         output = (user_input * item_input).sum(dim=1)
         return output
 
+
+
+# --- Training and evaluation ---
 def train(model, data, optimizer, criterion, batch_size, num_epochs, device):
     model.train()
     for epoch in range(num_epochs):
@@ -69,6 +111,8 @@ def train(model, data, optimizer, criterion, batch_size, num_epochs, device):
 
         print(f"Epoch {epoch+1}, Loss: {total_loss:.4f}")
 
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', type=str, default='CiteULike')
@@ -86,7 +130,7 @@ def main():
 
     # Load and preprocess data
     data = load_data(args.data)
-    model = HeaterModel(
+    model = Heater(
         latent_dim=args.latent_dim,
         content_dim=args.content_dim,
         output_dim=args.output_dim,
@@ -100,8 +144,44 @@ def main():
     train(model, data, optimizer, criterion, args.batch_size, args.epochs, device)
 
 def load_data(data_name):
-    data = {}
-    # Data loading and processing logic
+    timer = Timer(name='Data Loading')
+    timer.tic()
+
+    # Load user-item interaction data
+    data_path = f'./data/{data_name}'
+    u_pref = np.load(f'{data_path}/U_BPR.npy')
+    v_pref = np.load(f'{data_path}/V_BPR.npy')
+
+    # Load content features
+    item_content_file = f'{data_path}/item_features.txt'
+    item_content, _ = datasets.load_svmlight_file(item_content_file, zero_based=True, dtype=np.float32)
+    item_content = tfidf(item_content)
+
+    # Apply dimensionality reduction (e.g., randomized SVD)
+    from sklearn.utils.extmath import randomized_svd
+    u, s, _ = randomized_svd(item_content, n_components=300, n_iter=5)
+    item_content = u * s
+
+    # Standardize data
+    _, item_content = standardize(item_content)
+    _, u_pref = standardize(u_pref)
+    _, v_pref = standardize(v_pref)
+
+    # Load train and target data
+    train = pd.read_csv(f'{data_path}/train.csv', dtype=np.int32)
+    target = np.ones(len(train))  # Replace with actual target data if available
+
+    data = {
+        'u_pref': u_pref,
+        'v_pref': v_pref,
+        'u_content': u_pref,  # Placeholder: Update if user content is available
+        'v_content': item_content,
+        'user_list': train['uid'].values,
+        'item_list': train['iid'].values,
+        'target': target
+    }
+
+    timer.toc('Data loaded successfully.')
     return data
 
 if __name__ == "__main__":
