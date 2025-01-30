@@ -1,113 +1,108 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.optim as optim
 import numpy as np
+from tqdm import tqdm
+import argparse
 
+class HeaterModel(nn.Module):
+    def __init__(self, latent_dim, content_dim, output_dim, num_experts=5, random_prob=0.5):
+        super(HeaterModel, self).__init__()
+        self.num_experts = num_experts
+        self.random_prob = random_prob
 
-def l2_norm(para):
-    return torch.sum(torch.square(para))
+        # Mixture of Experts for content embedding transformation
+        self.experts_user = nn.ModuleList([nn.Linear(content_dim, output_dim) for _ in range(num_experts)])
+        self.experts_item = nn.ModuleList([nn.Linear(content_dim, output_dim) for _ in range(num_experts)])
+        self.gate_user = nn.Linear(content_dim, num_experts)
+        self.gate_item = nn.Linear(content_dim, num_experts)
 
+        # CF embedding layers
+        self.user_cf_layer = nn.Linear(latent_dim, output_dim)
+        self.item_cf_layer = nn.Linear(latent_dim, output_dim)
 
-def dense_batch_fc_tanh(x, units, is_training, scope, do_norm=False):
-    """
-    Fully connected layer with optional batch normalization and Tanh activation.
-    """
-    linear = nn.Linear(x.shape[1], units)
-    if do_norm:
-        batch_norm = nn.BatchNorm1d(units)
-        x = batch_norm(x)
-    x = torch.tanh(linear(x))
-    return x, l2_norm(linear.weight) + l2_norm(linear.bias)
+    def transform_content(self, content, gate_layer, experts):
+        gate_values = torch.softmax(gate_layer(content), dim=1)
+        expert_outputs = torch.stack([expert(content) for expert in experts], dim=1)
+        output = torch.sum(gate_values.unsqueeze(2) * expert_outputs, dim=1)
+        return output
 
+    def forward(self, u_pref, u_content, v_pref, v_content):
+        # Apply Mixture of Experts to transform content embeddings
+        u_content_transformed = self.transform_content(u_content, self.gate_user, self.experts_user)
+        v_content_transformed = self.transform_content(v_content, self.gate_item, self.experts_item)
 
-def dense_fc(x, units):
-    """
-    Fully connected layer without activation.
-    """
-    linear = nn.Linear(x.shape[1], units)
-    x = linear(x)
-    return x, l2_norm(linear.weight) + l2_norm(linear.bias)
-
-
-class Heater(nn.Module):
-    def __init__(self, latent_rank_in, user_content_rank, item_content_rank,
-                 model_select, rank_out, reg, alpha, dim):
-        super(Heater, self).__init__()
-
-        self.rank_in = latent_rank_in  # input embedding dimension
-        self.phi_u_dim = user_content_rank  # user content dimension
-        self.phi_v_dim = item_content_rank  # item content dimension
-        self.model_select = model_select  # model architecture
-        self.rank_out = rank_out  # output dimension
-        self.reg = reg
-        self.alpha = alpha
-        self.dim = dim
-
-        # Define layers and parameters
-        self.user_layers = nn.ModuleList()
-        self.item_layers = nn.ModuleList()
-
-        for hid in model_select:
-            self.user_layers.append(nn.Linear(self.phi_u_dim, hid))
-            self.item_layers.append(nn.Linear(self.phi_v_dim, hid))
-
-        self.user_output = nn.Linear(model_select[-1], rank_out)
-        self.item_output = nn.Linear(model_select[-1], rank_out)
-
-        self.dropout = nn.Dropout(p=0.5)
-
-    def forward(self, Uin, Vin, Ucontent=None, Vcontent=None, is_training=True):
-        reg_loss = 0
-
-        if self.phi_u_dim > 0 and Ucontent is not None:
-            for layer in self.user_layers:
-                Ucontent = F.tanh(layer(Ucontent))
-                reg_loss += l2_norm(layer.weight) + l2_norm(layer.bias)
-            U_embedding = self.user_output(Ucontent)
+        # Randomized Training: Choose between CF or content embeddings
+        if np.random.rand() < self.random_prob:
+            user_input = self.user_cf_layer(u_pref)
+            item_input = self.item_cf_layer(v_pref)
         else:
-            U_embedding = Uin
+            user_input = u_content_transformed
+            item_input = v_content_transformed
 
-        if self.phi_v_dim > 0 and Vcontent is not None:
-            for layer in self.item_layers:
-                Vcontent = F.tanh(layer(Vcontent))
-                reg_loss += l2_norm(layer.weight) + l2_norm(layer.bias)
-            V_embedding = self.item_output(Vcontent)
-        else:
-            V_embedding = Vin
+        # Compute the output prediction
+        output = (user_input * item_input).sum(dim=1)
+        return output
 
-        # Regularization loss
-        reg_loss *= self.reg
+def train(model, data, optimizer, criterion, batch_size, num_epochs, device):
+    model.train()
+    for epoch in range(num_epochs):
+        total_loss = 0
+        indices = np.random.permutation(len(data['user_list']))
+        batches = [(i, i + batch_size) for i in range(0, len(indices), batch_size)]
 
-        # Compute predictions
-        preds = torch.sum(U_embedding * V_embedding, dim=1)
-        return preds, reg_loss
+        for start, end in tqdm(batches, desc=f"Epoch {epoch+1}"):
+            batch_indices = indices[start:end]
+            u_pref = torch.tensor(data['u_pref'][batch_indices], device=device, dtype=torch.float32)
+            v_pref = torch.tensor(data['v_pref'][batch_indices], device=device, dtype=torch.float32)
+            u_content = torch.tensor(data['u_content'][batch_indices], device=device, dtype=torch.float32)
+            v_content = torch.tensor(data['v_content'][batch_indices], device=device, dtype=torch.float32)
+            targets = torch.tensor(data['target'][batch_indices], device=device, dtype=torch.float32)
 
+            optimizer.zero_grad()
+            predictions = model(u_pref, u_content, v_pref, v_content)
+            loss = criterion(predictions, targets)
+            loss.backward()
+            optimizer.step()
+
+            total_loss += loss.item()
+
+        print(f"Epoch {epoch+1}, Loss: {total_loss:.4f}")
 
 def main():
-    # Example configuration
-    latent_rank_in = 100
-    user_content_rank = 50
-    item_content_rank = 50
-    model_select = [64, 32]
-    rank_out = 10
-    reg = 0.01
-    alpha = 0.1
-    dim = 5
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data', type=str, default='CiteULike')
+    parser.add_argument('--latent-dim', type=int, default=200, help='Latent dimension of CF embeddings')
+    parser.add_argument('--content-dim', type=int, default=300, help='Dimension of content embeddings')
+    parser.add_argument('--output-dim', type=int, default=200, help='Output embedding dimension')
+    parser.add_argument('--num-experts', type=int, default=5, help='Number of experts in the mixture model')
+    parser.add_argument('--random-prob', type=float, default=0.5, help='Probability to use CF embeddings')
+    parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs')
+    parser.add_argument('--batch-size', type=int, default=1024, help='Batch size')
+    parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')
+    args = parser.parse_args()
 
-    # Example input data
-    Uin = torch.randn((128, latent_rank_in))
-    Vin = torch.randn((128, latent_rank_in))
-    Ucontent = torch.randn((128, user_content_rank))
-    Vcontent = torch.randn((128, item_content_rank))
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Initialize and forward pass through the model
-    heater = Heater(latent_rank_in, user_content_rank, item_content_rank,
-                    model_select, rank_out, reg, alpha, dim)
+    # Load and preprocess data
+    data = load_data(args.data)
+    model = HeaterModel(
+        latent_dim=args.latent_dim,
+        content_dim=args.content_dim,
+        output_dim=args.output_dim,
+        num_experts=args.num_experts,
+        random_prob=args.random_prob
+    ).to(device)
 
-    preds, reg_loss = heater(Uin, Vin, Ucontent, Vcontent)
-    print("Predictions:", preds)
-    print("Regularization Loss:", reg_loss)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    criterion = nn.MSELoss()
 
+    train(model, data, optimizer, criterion, args.batch_size, args.epochs, device)
+
+def load_data(data_name):
+    data = {}
+    # Data loading and processing logic
+    return data
 
 if __name__ == "__main__":
     main()
