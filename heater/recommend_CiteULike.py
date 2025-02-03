@@ -205,6 +205,18 @@ def calculate_ndcg(preds, ground_truth, k):
     return ndcg
 
 
+def print_results(recall=None, precision=None, ndcg=None, recall_k=None):
+    """Output the evaluation results to the prompt in a formatted style."""
+    time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"\n[Evaluation] {time}")
+    print("Recall@K:\t" + "\t".join(map(str, recall_k)))
+    print("Recall:\t\t" + "\t".join(f"{x:.4f}" for x in recall))
+    print("Precision:\t" + "\t".join(f"{x:.4f}" for x in precision))
+    print("NDCG:\t\t" + "\t".join(f"{x:.4f}" for x in ndcg))
+    print("########################################################\n")
+
+
+
 # --- Model definition ---
 class Heater(nn.Module):
     def __init__(self, latent_dim, content_dim, output_dim, num_experts=5, random_prob=0.5, dropout=0.5, alpha=0.0001, beta=0.0001):
@@ -379,7 +391,6 @@ def evaluate(model, data, batch_size, device, recall_k=[10, 20, 30, 50]):
     # Prepare evaluation data
     eval_data = data['test_eval']
     eval_batches = eval_data.eval_batch
-    total_recall, total_precision, total_ndcg = [0] * len(recall_k), [0] * len(recall_k), [0] * len(recall_k)
 
     idcg_array = 1 / np.log2(np.arange(1, 101) + 1)
     idcg_table = np.array([np.sum(idcg_array[:i + 1]) for i in range(100)])
@@ -421,13 +432,19 @@ def evaluate(model, data, batch_size, device, recall_k=[10, 20, 30, 50]):
 
         # Loop over each recall threshold
         for at_k in recall_k:
-            preds_k = preds_all[:, :at_k]
+            preds_all_tensor = torch.tensor(preds_all, device=device)
+
+            # Get top-k indices for each user
+            _, topk_indices = torch.topk(preds_all_tensor, at_k, dim=1, largest=True, sorted=True)
+
+            # Convert top-k indices to NumPy array for further processing
+            preds_k = topk_indices.cpu().numpy()
 
             # Create sparse matrix for predictions
             y = eval_data.R_test_inf[y_nz, :]
             pred_sparse = lil_matrix(y.shape)
             for idx, preds in enumerate(preds_k):
-                pred_sparse.rows[idx] = preds
+                pred_sparse.rows[idx] = preds.tolist()
                 pred_sparse.data[idx] = [1] * len(preds)
 
             # Convert to CSR format
@@ -446,14 +463,29 @@ def evaluate(model, data, batch_size, device, recall_k=[10, 20, 30, 50]):
             y_csr = y.tocsr()
 
             # Get DCG values
-            dcg_array = y_csr[(rows, cols)].A1.reshape((preds_k.shape[0], -1))
-            dcg = np.sum(dcg_array * idcg_array[:at_k].reshape((1, -1)), axis=1)
+            dcg = []
+            for user_idx, preds in enumerate(preds_k):
+                # Get relevant ground truth items for this user
+                relevant_items = y_csr.getrow(user_idx).toarray().flatten()
+
+                # Get the predicted items and their relevance scores
+                predicted_relevance = relevant_items[preds]
+
+                # Calculate DCG for this user
+                dcg_user = np.sum(predicted_relevance / np.log2(np.arange(2, at_k + 2)))
+                dcg.append(dcg_user)
+
+            # Convert to numpy array for further computation
+            dcg = np.array(dcg)
 
             # Calculate IDCG based on ground truth size
             idcg = y.sum(axis=1).A1 - 1
             idcg[idcg >= at_k] = at_k - 1
             idcg = idcg_table[idcg.astype(int)]
             ndcg.append(np.mean(dcg / idcg.clip(min=1e-10)))
+
+        # Print and log results
+        print_results(recall=recall, precision=precision, ndcg=ndcg, recall_k=recall_k)
 
         return recall, precision, ndcg
 
@@ -466,7 +498,7 @@ def main():
     parser.add_argument('--output-dim', type=int, default=200)
     parser.add_argument('--num-experts', type=int, default=5)
     parser.add_argument('--random-prob', type=float, default=0.5)
-    parser.add_argument('--epochs', type=int, default=1)
+    parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--batch-size', type=int, default=1024)
     parser.add_argument('--eval_batch_size', type=int, default=5000)
     parser.add_argument('--lr', type=float, default=0.001)
