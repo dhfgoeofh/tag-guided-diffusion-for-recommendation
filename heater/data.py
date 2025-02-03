@@ -16,7 +16,7 @@ class Timer:
         print(f"[{self.name}] {message} elapsed: {elapsed:.2f}s")
 
 def load_eval_data(test_file, cold_user=False, test_item_ids=None):
-    timer = Timer()
+    timer = Timer(test_file)
     test = pd.read_csv(test_file, dtype=np.int32)
     if not cold_user:
         test_item_ids = list(set(test['iid'].values))

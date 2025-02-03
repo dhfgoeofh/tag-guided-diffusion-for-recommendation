@@ -246,6 +246,16 @@ class Heater(nn.Module):
                                            nn.BatchNorm1d(output_dim),
                                            nn.Tanh()
                                            )
+        
+        self._initialize_weights()
+
+    def _initialize_weights(self):
+        """Initialize weights with truncated normal distribution."""
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                torch.nn.init.trunc_normal_(module.weight, mean=0.0, std=0.01)  # Apply truncated normal initialization
+                if module.bias is not None:
+                    torch.nn.init.constant_(module.bias, 0.0)  # Initialize biases to 0
 
     def transform_content(self, content, gate_layer, experts):
         gate_values = torch.softmax(gate_layer(content), dim=1)
@@ -337,10 +347,11 @@ def train(model, data, optimizer, batch_size, num_epochs, neg, item_warm, datase
     item_list = data['item_list']
 
     for epoch in range(num_epochs):
-        total_loss = 0
-        total_prediction_loss = 0
-        total_reg_loss = 0
-        total_diff_loss = 0
+        total_loss = 0.0
+        total_prediction_loss = 0.0
+        total_reg_loss = 0.0
+        total_diff_loss = 0.0
+        total_samples = 0  # 데이터 개수 카운팅
 
         # Negative Sampling
         user_array, item_array, target_array = negative_sampling(user_list, item_list, neg, item_warm)
@@ -380,17 +391,24 @@ def train(model, data, optimizer, batch_size, num_epochs, neg, item_warm, datase
             loss.backward()
             optimizer.step()
 
-            # Accumulate losses
+            # Accumulate losses and sample count
+            batch_size_actual = targets.size(0)
             total_loss += loss.item()
             total_prediction_loss += prediction_loss.item()
             total_reg_loss += reg_loss.item() if isinstance(reg_loss, torch.Tensor) else reg_loss
             total_diff_loss += diff_loss.item() if isinstance(diff_loss, torch.Tensor) else diff_loss
+            total_samples += batch_size_actual  # 배치의 데이터 개수 누적
 
-        # Print epoch statistics
-        print(f"Epoch {epoch+1}, Total Loss: {total_loss:.4f}, "
-              f"Prediction Loss: {total_prediction_loss:.4f}, "
-              f"Regularization Loss: {total_reg_loss:.4f}, "
-              f"Difference Loss: {total_diff_loss:.4f}")
+        # 평균 손실 계산 및 출력
+        avg_total_loss = total_loss / total_samples
+        avg_prediction_loss = total_prediction_loss / total_samples
+        avg_reg_loss = total_reg_loss / total_samples
+        avg_diff_loss = total_diff_loss / total_samples
+
+        print(f"Epoch {epoch+1}, Avg Total Loss: {avg_total_loss:.6f}, "
+              f"Avg Prediction Loss: {avg_prediction_loss:.6f}, "
+              f"Avg Regularization Loss: {avg_reg_loss:.6f}, "
+              f"Avg Difference Loss: {avg_diff_loss:.6f}")
 
 
 def evaluate(model, data, batch_size, device, recall_k=[10, 20, 30, 50]):
@@ -536,9 +554,10 @@ def main():
         beta=args.beta
     ).to(device)
 
-    # optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=0.9)
+    
     ## Momentum Optimizing
-    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    #optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9)
 
     train(model, data, optimizer, args.batch_size, args.epochs, args.neg, item_warm, args.data, device)
 
