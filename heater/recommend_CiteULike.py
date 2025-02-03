@@ -237,6 +237,10 @@ class Heater(nn.Module):
         self.user_content_layer = nn.Linear(output_dim, output_dim)
         self.item_content_layer = nn.Linear(output_dim, output_dim)
 
+        # final embedding layers
+        self.user_embedding_layer = nn.Linear(output_dim, output_dim)
+        self.item_embedding_layer = nn.Linear(output_dim, output_dim)
+
         # Additional layer to mimic `dense_batch_fc_tanh`
         self.tanh_fc_layer = nn.Sequential(nn.Linear(output_dim, output_dim),
                                            nn.BatchNorm1d(output_dim),
@@ -304,11 +308,16 @@ class Heater(nn.Module):
 
 
         # Additional dense layer with batch normalization and tanh activation
-        u_final = self.tanh_fc_layer(u_final)
-        v_final = self.tanh_fc_layer(v_final)
+        u_emb = self.user_embedding_layer(u_final)
+        v_emb = self.item_embedding_layer(v_final)
 
-        # Compute the output prediction
-        output = torch.matmul(u_final, v_final.T)         # [num_user, num_item, 200] → [num_user, num_items]
+        # 예측값 계산 
+        if u_emb.size(0) == v_emb.size(0):
+            # 열의 크기가 같을 때: element-wise 곱 후 합산
+            output = torch.sum(u_emb * v_emb, dim=1)  # [batch_size_user]
+        else:
+            # 열의 크기가 다를 때: 행렬 곱셈으로 모든 유저-아이템 점수 계산
+            output = torch.matmul(u_emb, v_emb.T)  # [batch_size_user, batch_size_item]
 
         # Calculate additional losses
         reg_loss = self.calculate_reg_loss()
@@ -458,8 +467,6 @@ def evaluate(model, data, batch_size, device, recall_k=[10, 20, 30, 50]):
             precision.append(np.mean(overlap.sum(axis=1) / at_k))
 
             # Calculate NDCG
-            overlap_coo = overlap.tocoo()
-            rows, cols = overlap_coo.row, overlap_coo.col
             y_csr = y.tocsr()
 
             # Get DCG values
@@ -501,7 +508,7 @@ def main():
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--batch-size', type=int, default=1024)
     parser.add_argument('--eval_batch_size', type=int, default=5000)
-    parser.add_argument('--lr', type=float, default=0.001)
+    parser.add_argument('--lr', type=float, default=0.005)
     parser.add_argument('--neg', type=int, default=5, help='Number of negative samples per positive sample')
     parser.add_argument('--recall-k', type=int, nargs='+', default=[10, 20, 30, 50], 
                         help='List of thresholds for Recall@K evaluation (e.g., --recall-k 1 5 10)')
@@ -529,9 +536,9 @@ def main():
         beta=args.beta
     ).to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    # optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=0.9)
     ## Momentum Optimizing
-    # optimizer = optim.SGD(model.parameters(), lr=0.005, momentum=0.9)
+    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9)
 
     train(model, data, optimizer, args.batch_size, args.epochs, args.neg, item_warm, args.data, device)
 
