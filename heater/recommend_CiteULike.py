@@ -209,44 +209,51 @@ def print_results(recall=None, precision=None, ndcg=None, recall_k=None):
     """Output the evaluation results to the prompt in a formatted style."""
     time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"\n[Evaluation] {time}")
-    print("Recall@K:\t" + "\t".join(map(str, recall_k)))
-    print("Recall:\t\t" + "\t".join(f"{x:.4f}" for x in recall))
-    print("Precision:\t" + "\t".join(f"{x:.4f}" for x in precision))
-    print("NDCG:\t\t" + "\t".join(f"{x:.4f}" for x in ndcg))
+    print("Recall@K:\t" + "\t\t".join(map(str, recall_k)))
+    print("Recall:\t\t" + "\t".join(f"{x:.6f}" for x in recall))
+    print("Precision:\t" + "\t".join(f"{x:.6f}" for x in precision))
+    print("NDCG:\t\t" + "\t".join(f"{x:.6f}" for x in ndcg))
     print("########################################################\n")
 
 
 
 # --- Model definition ---
 class Heater(nn.Module):
-    def __init__(self, latent_dim, content_dim, output_dim, num_experts=5, random_prob=0.5, dropout=0.5, alpha=0.0001, beta=0.0001):
+    def __init__(self, latent_dim, content_dim, output_dim, num_experts=5, dropout=0.5, alpha=0.0001, beta=0.0001):
         super(Heater, self).__init__()
         self.num_experts = num_experts
-        self.random_prob = random_prob
         self.dropout = dropout
         self.alpha = alpha  # 차이 손실 가중치
         self.beta = beta    # 정규화 손실 가중치
 
         # Mixture of Experts for content embedding transformation
-        self.experts_user = nn.ModuleList([nn.Linear(content_dim, output_dim) for _ in range(num_experts)])
-        self.experts_item = nn.ModuleList([nn.Linear(content_dim, output_dim) for _ in range(num_experts)])
-        self.gate_user = nn.Linear(content_dim, num_experts)
-        self.gate_item = nn.Linear(content_dim, num_experts)
+        self.experts_user = nn.ModuleList(
+            [nn.Sequential(nn.Linear(content_dim, output_dim), nn.Tanh()) for _ in range(num_experts)]
+        )
+        self.experts_item = nn.ModuleList(
+            [nn.Sequential(nn.Linear(content_dim, output_dim), nn.Tanh()) for _ in range(num_experts)]
+        )
+        self.gate_user = nn.Sequential(
+            nn.Linear(content_dim, num_experts),
+            nn.Tanh()
+        )
+        self.gate_item = nn.Sequential(
+            nn.Linear(content_dim, num_experts),
+            nn.Tanh()
+        )
 
-        # CF embedding layers
-        self.user_content_layer = nn.Linear(output_dim, output_dim)
-        self.item_content_layer = nn.Linear(output_dim, output_dim)
+        self.tanh = nn.Tanh()
+
+        # Additional layer to mimic `dense_batch_fc_tanh`
+        self.fc_batchnorm_tanh = nn.Sequential(nn.Linear(output_dim, output_dim),
+                                               nn.BatchNorm1d(output_dim),
+                                               nn.Tanh()
+                                               )
 
         # final embedding layers
         self.user_embedding_layer = nn.Linear(output_dim, output_dim)
         self.item_embedding_layer = nn.Linear(output_dim, output_dim)
 
-        # Additional layer to mimic `dense_batch_fc_tanh`
-        self.tanh_fc_layer = nn.Sequential(nn.Linear(output_dim, output_dim),
-                                           nn.BatchNorm1d(output_dim),
-                                           nn.Tanh()
-                                           )
-        
         self._initialize_weights()
 
     def _initialize_weights(self):
@@ -274,7 +281,7 @@ class Heater(nn.Module):
         diff_item_loss = l2_norm(v_content_transformed - v_pref_cf) if v_content_transformed is not None else 0
         return self.alpha * (diff_user_loss + diff_item_loss)
 
-    def forward(self, u_pref, u_content, v_pref, v_content, dataset='CiteULike'):
+    def forward(self, u_pref, u_content, v_pref, v_content, dataset='CiteULike', dropout_user_indicator=None, dropout_item_indicator=None):
         # Apply Mixture of Experts to transform content embeddings
         u_content_last, v_content_last = None, None
 
@@ -283,39 +290,34 @@ class Heater(nn.Module):
 
         if dataset == 'CiteULike':
             v_content_expert = self.transform_content(v_content, self.gate_item, self.experts_item)
-            v_content_last = self.item_content_layer(v_content_expert)
-
-            dropout_item_indicator = (torch.rand(v_content_last.size(0), 1, device=v_content_last.device) < self.random_prob).float()
+            v_content_last = self.tanh(v_content_expert)
 
         elif dataset == 'LastFM':
             u_content_expert = self.transform_content(u_content, self.gate_user, self.experts_user)
-            u_content_last = self.user_content_layer(u_content_expert)
-
-            dropout_user_indicator = (torch.rand(u_content_last.size(0), 1, device=u_content_last.device) < self.random_prob).float()
+            u_content_last = self.tanh(u_content_expert)
 
         elif dataset == 'XING':
             u_content_expert = self.transform_content(u_content, self.gate_user, self.experts_user)
+            u_content_last = self.tanh(u_content_expert)
             v_content_expert = self.transform_content(v_content, self.gate_item, self.experts_item)
-
-            u_content_last = self.user_content_layer(u_content_expert)
-            v_content_last = self.item_content_layer(v_content_expert)
-
-            dropout_user_indicator = (torch.rand(u_content_last.size(0), 1, device=u_content_last.device) < self.random_prob).float()
-            dropout_item_indicator = (torch.rand(v_content_last.size(0), 1, device=v_content_last.device) < self.random_prob).float()
-
+            v_content_last = self.tanh(v_content_expert)
 
         diff_loss = 0
 
-        if u_content_last is None:
+        if u_content_last is None or dropout_user_indicator is None:
             u_final = u_pref
         else:
             u_final = u_pref * dropout_user_indicator + u_content_last * (1 - dropout_user_indicator)
+            
 
-        if v_content_last is None:
+        if v_content_last is None or dropout_item_indicator is None:
             v_final = v_pref
         else:
             v_final = v_pref * dropout_item_indicator + v_content_last * (1 - dropout_item_indicator)
 
+
+        u_final = self.fc_batchnorm_tanh(u_final)
+        v_final = self.fc_batchnorm_tanh(v_final)
 
         # Additional dense layer with batch normalization and tanh activation
         u_emb = self.user_embedding_layer(u_final)
@@ -381,9 +383,20 @@ def train(model, data, optimizer, batch_size, num_epochs, neg, item_warm, datase
 
             targets = torch.tensor(batch_targets, device=device, dtype=torch.float32)
 
+            # dropout
+            if model.dropout != 0:
+                n_to_drop = int(np.floor(model.dropout * len(batch_indices)))  # number of u-i pairs to be dropped
+                zero_index = np.random.choice(np.arange(len(batch_indices)), n_to_drop, replace=False)
+            else:
+                zero_index = np.array([])
+            
+            dropout_item_indicator = torch.zeros_like(targets).reshape((-1, 1)).cuda()
+            if len(zero_index) > 0:
+                dropout_item_indicator[zero_index] = 0
+
             # Forward pass and loss calculation
             optimizer.zero_grad()
-            predictions, reg_loss, diff_loss = model(u_pref, u_content, v_pref, v_content)
+            predictions, reg_loss, diff_loss = model(u_pref, u_content, v_pref, v_content, dropout_item_indicator=dropout_item_indicator)
             prediction_loss = criterion(predictions, targets)
             loss = prediction_loss + reg_loss + diff_loss
 
@@ -405,10 +418,10 @@ def train(model, data, optimizer, batch_size, num_epochs, neg, item_warm, datase
         avg_reg_loss = total_reg_loss / total_samples
         avg_diff_loss = total_diff_loss / total_samples
 
-        print(f"Epoch {epoch+1}, Avg Total Loss: {avg_total_loss:.6f}, "
-              f"Avg Prediction Loss: {avg_prediction_loss:.6f}, "
-              f"Avg Regularization Loss: {avg_reg_loss:.6f}, "
-              f"Avg Difference Loss: {avg_diff_loss:.6f}")
+        print(f"Epoch {epoch+1}, Avg Total Loss: {avg_total_loss:.8f}, "
+              f"Avg Prediction Loss: {avg_prediction_loss:.8f}, "
+              f"Avg Regularization Loss: {avg_reg_loss:.8f}, "
+              f"Avg Difference Loss: {avg_diff_loss:.8f}")
 
 
 def evaluate(model, data, batch_size, device, recall_k=[10, 20, 30, 50]):
@@ -418,6 +431,12 @@ def evaluate(model, data, batch_size, device, recall_k=[10, 20, 30, 50]):
     # Prepare evaluation data
     eval_data = data['test_eval']
     eval_batches = eval_data.eval_batch
+
+    zero_index = np.where(np.sum(eval_data.V_pref_test, axis=1) == 0)[0]
+    dropout_item_indicator = np.zeros((len(eval_data.test_item_ids), 1))
+    dropout_item_indicator[zero_index] = 0
+
+    dropout_item_indicator = torch.tensor(dropout_item_indicator, dtype=torch.float32, device=device).cuda()
 
     idcg_array = 1 / np.log2(np.arange(1, 101) + 1)
     idcg_table = np.array([np.sum(idcg_array[:i + 1]) for i in range(100)])
@@ -436,7 +455,7 @@ def evaluate(model, data, batch_size, device, recall_k=[10, 20, 30, 50]):
             v_content_batch = torch.tensor(v_content[eval_items], device=device, dtype=torch.float32)
 
             # Get predictions
-            predictions, _, _ = model(u_pref, None, v_pref, v_content_batch)
+            predictions, _, _ = model(u_pref, None, v_pref, v_content_batch, dropout_item_indicator=dropout_item_indicator)
             preds_all_batches.append(predictions.cpu().numpy())
 
         # Concatenate all prediction batches
@@ -522,7 +541,7 @@ def main():
     parser.add_argument('--content-dim', type=int, default=300)
     parser.add_argument('--output-dim', type=int, default=200)
     parser.add_argument('--num-experts', type=int, default=5)
-    parser.add_argument('--random-prob', type=float, default=0.5)
+    parser.add_argument('--dropout', type=float, default=0.5)
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--batch-size', type=int, default=1024)
     parser.add_argument('--eval_batch_size', type=int, default=5000)
@@ -549,7 +568,7 @@ def main():
         content_dim=args.content_dim,
         output_dim=args.output_dim,
         num_experts=args.num_experts,
-        random_prob=args.random_prob,
+        dropout=args.dropout,
         alpha=args.alpha,
         beta=args.beta
     ).to(device)
@@ -557,7 +576,7 @@ def main():
     
     ## Momentum Optimizing
     #optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9)
+    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9)     # momentum optimizer
 
     train(model, data, optimizer, args.batch_size, args.epochs, args.neg, item_warm, args.data, device)
 
