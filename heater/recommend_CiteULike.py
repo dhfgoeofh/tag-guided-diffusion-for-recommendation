@@ -556,8 +556,8 @@ def main():
 
     
     ## Momentum Optimizing
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    #optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9)
+    #optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9)
 
     train(model, data, optimizer, args.batch_size, args.epochs, args.neg, item_warm, args.data, device)
 
